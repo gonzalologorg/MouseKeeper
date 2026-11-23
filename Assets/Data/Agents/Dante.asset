@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d325c2848154d1cb88e95b67c9354ca, type: 3}
+  m_Name: Dante
+  m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.AgentDefinition
+  profile:
+    name: Dante
+    model: 0
+    health: 160
+    speed: 5.2
+    attackSpeed: 1.75
+    weapon: 0
+    bravery: 5
+    accuracy: 10
+    agility: 10
+    distrust: 1
+    greed: 3
+    teamwork: 8
+  modelPrefab: {fileID: 0}
+  placeholderColor: {r: 0.9, g: 0.31500003, b: 0.54899997, a: 1}
+  startingWeapon: {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}
+  missionCost: 19
+  dialogues:
+  - language: Spanish
+    file: {fileID: 4900000, guid: 7cb83fcd9e57590186e66f8dbb85ace5, type: 3}

@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "El camino está libre.",
+    "Zona segura, por ahora.",
+    "Buen trabajo ahí.",
+    "Creí que no saldríamos.",
+    "Aquí ya no queda ninguna rata."
+  ],
+  "injured": [
+    "No aguanto mucho más.",
+    "Me cuesta mantenerme en pie.",
+    "Mi resistencia está casi agotada.",
+    "Cuidado, estoy muy débil.",
+    "Tengo miedo y heridas."
+  ],
+  "purchase": [
+    "Ojalá me mantenga a salvo.",
+    "Justo lo que buscaba.",
+    "Espero que valga la pena.",
+    "Esto puede servirnos.",
+    "Mejor que guardar el dinero."
+  ],
+  "healed": [
+    "Condición estabilizada.",
+    "Me siento mejor.",
+    "Ya duele un poco menos.",
+    "Vuelvo a estar en marcha.",
+    "Qué alivio, sigo aquí."
+  ],
+  "bossDefeated": [
+    "¡No puedo creer que sobrevivimos!",
+    "Por fin terminó.",
+    "Se acabó su reinado.",
+    "Objetivo principal eliminado.",
+    "Buen trabajo, lo logramos."
+  ],
+  "allyDied": [
+    "Compañero caído. Necesitamos apoyo.",
+    "Esto no puede estar pasando.",
+    "No te dejaremos atrás.",
+    "Perdimos a uno de los nuestros.",
+    "¡No, compañero!"
+  ]
+}

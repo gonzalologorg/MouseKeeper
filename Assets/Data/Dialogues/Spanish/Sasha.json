@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Bien cubiertos, equipo.",
+    "Aquí ya no queda ninguna rata.",
+    "El camino está libre.",
+    "Una sala más, algún premio habrá.",
+    "Está tranquilo por ahora."
+  ],
+  "injured": [
+    "Me duele hasta respirar.",
+    "Necesito curarme pronto.",
+    "No quiero retrasarlos.",
+    "No me encuentro nada bien.",
+    "Necesito vivir para cobrar."
+  ],
+  "purchase": [
+    "No estaba barato.",
+    "Esto nos ayudará a todos.",
+    "Espero recuperar cada moneda.",
+    "Dinero bien gastado.",
+    "Veamos qué tal funciona."
+  ],
+  "healed": [
+    "Por suerte, sigo aquí.",
+    "Ya puedo cubrirles otra vez.",
+    "Una vida más para gastar.",
+    "Ya duele un poco menos.",
+    "Eso sienta mucho mejor."
+  ],
+  "bossDefeated": [
+    "Lo conseguimos, equipo.",
+    "Se acabó su reinado.",
+    "Ese jefe debía guardar algo.",
+    "Esa fue difícil.",
+    "No lo habría logrado sin ustedes."
+  ],
+  "allyDied": [
+    "No pienso abandonarte.",
+    "El dinero no compensa esto.",
+    "Esto no debería haber pasado.",
+    "Lo siento, no llegué a tiempo.",
+    "No puedo creerlo."
+  ]
+}

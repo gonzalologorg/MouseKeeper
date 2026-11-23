@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Bien cubiertos, equipo.",
+    "Veamos qué dejaron.",
+    "Buen trabajo ahí.",
+    "Aquí ya no queda ninguna rata.",
+    "Otra sala asegurada."
+  ],
+  "injured": [
+    "Necesito ayuda, por favor.",
+    "Necesito vivir para cobrar.",
+    "Estoy perdiendo fuerzas.",
+    "Equipo, necesito cobertura.",
+    "Esto se está poniendo feo."
+  ],
+  "purchase": [
+    "Esto también es una inversión.",
+    "Ahora estoy mejor equipado.",
+    "Una mejora para el equipo.",
+    "Una compra útil.",
+    "Una buena inversión."
+  ],
+  "healed": [
+    "Esto me da otra oportunidad.",
+    "Vuelvo a estar en marcha.",
+    "Seguimos juntos.",
+    "Ahora puedo mantenerme en pie.",
+    "Todavía puedo cobrar mi parte."
+  ],
+  "bossDefeated": [
+    "Por fin terminó.",
+    "Ese jefe debía guardar algo.",
+    "Lo hicimos juntos.",
+    "El jefe ha caído.",
+    "Se acabó su reinado."
+  ],
+  "allyDied": [
+    "¡Compañero, no te dejaremos!",
+    "El dinero no compensa esto.",
+    "No debió terminar así.",
+    "Perdimos a uno de los nuestros.",
+    "Te sacaremos de aquí."
+  ]
+}

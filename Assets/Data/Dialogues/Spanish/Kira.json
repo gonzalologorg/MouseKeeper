@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Sala despejada. Sigamos.",
+    "Ya podemos avanzar.",
+    "¡Que venga la siguiente!",
+    "Veamos qué dejaron.",
+    "Podemos seguir adelante."
+  ],
+  "injured": [
+    "Necesito un respiro.",
+    "Estoy perdiendo fuerzas.",
+    "No podré gastar si caigo.",
+    "No aguanto mucho más.",
+    "No caeré sin luchar."
+  ],
+  "purchase": [
+    "Esto debería ayudar.",
+    "Dinero bien gastado.",
+    "Espero recuperar cada moneda.",
+    "Justo lo que buscaba.",
+    "¡Ahora sí estamos hablando!"
+  ],
+  "healed": [
+    "Una vida más para gastar.",
+    "Aún me queda pelea.",
+    "Esto me da otra oportunidad.",
+    "Por suerte, sigo aquí.",
+    "Gracias, ya puedo seguir."
+  ],
+  "bossDefeated": [
+    "Ese jefe debía guardar algo.",
+    "¡Que todos sepan quién ganó!",
+    "Podemos respirar tranquilos.",
+    "Esa rata ya no manda.",
+    "Buen trabajo, lo logramos."
+  ],
+  "allyDied": [
+    "Te sacaremos de aquí.",
+    "No voy a olvidarte.",
+    "Ojalá hubiera podido ayudarte.",
+    "No debió terminar así.",
+    "¡Responderán por esto!"
+  ]
+}

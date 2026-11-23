@@ -155,8 +155,8 @@ Camera:
   m_GameObject: {fileID: 330585543}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 0}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -415,12 +415,22 @@ MonoBehaviour:
   roomPrefab: {fileID: 0}
   mousePrefabs:
   - {fileID: 2114918390258977013, guid: 446a9229267fb57479a42bfb310f3df3, type: 3}
-  weapons: []
+  jumpingMouseModel: {fileID: 919132149155446097, guid: 9d14c14315184c14fa075cf2a92ae7e3, type: 3}
+  tankyMouseModel: {fileID: 919132149155446097, guid: 474011186e2aa82488d990261648a83f, type: 3}
+  speedyMouseModel: {fileID: 919132149155446097, guid: 19b3718ceea95bb4b826f714848aa7f9, type: 3}
+  weapons:
+  - {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}
+  - {fileID: 11400000, guid: b7089bb5e46ebb3439d98a99ef4394e9, type: 2}
+  - {fileID: 11400000, guid: 8be67bf28454e97488c0dfc0b455b845, type: 2}
+  - {fileID: 11400000, guid: 299180ec71abc004e9dd0adf3ad0fedc, type: 2}
   passiveItems: []
   cashVialPrefab: {fileID: 8118741079182481055, guid: 5c50930947dea534d9ab5dc09e2529d9, type: 3}
   healthVialPrefab: {fileID: 5850251840450219268, guid: 6fa61e4b23c410645826217796af18bc, type: 3}
-  roomCount: 9
+  agentModels: []
+  squad: []
+  roomArchitecture: {fileID: 0}
   micePerRoom: 5
+  mouseSpawnInterval: 0.35
   roomWidth: 18
   roomDepth: 14
 --- !u!4 &477225353
@@ -573,7 +583,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 1c581f0e78e74c9fb883315e413a83f0, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.Minimap
 --- !u!1 &1998154900
 GameObject:
@@ -724,7 +734,7 @@ Canvas:
   serializedVersion: 3
   m_RenderMode: 1
   m_Camera: {fileID: 330585545}
-  m_PlaneDistance: 100
+  m_PlaneDistance: 1
   m_PixelPerfect: 1
   m_ReceivesEvents: 1
   m_OverrideSorting: 0
@@ -735,7 +745,7 @@ Canvas:
   m_AdditionalShaderChannelsFlag: 0
   m_UpdateRectTransformForStandalone: 0
   m_SortingLayerID: 0
-  m_SortingOrder: 0
+  m_SortingOrder: 1
   m_TargetDisplay: 0
 --- !u!224 &2130194213
 RectTransform:

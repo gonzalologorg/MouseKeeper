@@ -1,0 +1,14 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Button name="agent-button" class="agent-row">
+        <ui:VisualElement name="agent-portrait" class="roster-portrait" />
+        <ui:VisualElement class="roster-content">
+            <ui:VisualElement class="name-row">
+                <ui:Label name="agent-name" class="agent-name" />
+                <ui:VisualElement name="agent-stars" class="stars" />
+                <ui:Label name="agent-cost" class="agent-cost" />
+            </ui:VisualElement>
+            <ui:VisualElement name="agent-stats" class="slot-stats" />
+            <ui:Label name="agent-status" class="agent-status" />
+        </ui:VisualElement>
+    </ui:Button>
+</ui:UXML>

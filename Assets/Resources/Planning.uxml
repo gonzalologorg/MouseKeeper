@@ -1,0 +1,108 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <Style src="Planning.uss" />
+    <ui:VisualElement name="planning-root" class="planning-root">
+        <ui:VisualElement class="header">
+            <ui:Label text="PLANIFICACIÓN DE EXPEDICIÓN" class="title" />
+            <ui:Label name="funds" class="header-funds" />
+            <ui:Label name="lives" class="header-lives" />
+            <ui:Button name="language-button" text="ES / EN" class="language-button" />
+        </ui:VisualElement>
+        <ui:Label name="last-result" class="result" />
+        <ui:Label name="load-error" class="error" />
+        <ui:VisualElement name="game-over" class="game-over">
+            <ui:Label text="FIN DE LA CAMPAÑA" class="title" />
+            <ui:Label text="El gobierno te ha prohibido seguir trabajando por el descuido a la humanidad." class="game-over-message" />
+            <ui:Button name="restart-button" text="Comenzar una nueva campaña" class="action-button" />
+        </ui:VisualElement>
+        <ui:VisualElement name="pending-expedition" class="pending">
+            <ui:Label text="Hay una expedición pendiente." class="section-title" />
+            <ui:VisualElement class="button-row">
+                <ui:Button name="resume-button" text="Reiniciar expedición pendiente" />
+                <ui:Button name="abandon-button" text="Abandonar expedición" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:VisualElement name="planner" class="planner">
+            <ui:VisualElement class="columns">
+                <ui:VisualElement class="roster-column panel">
+                    <ui:Label text="AGENTES DISPONIBLES" class="section-title" />
+                    <ui:Label text="Elige un puesto y luego un agente." class="hint" />
+                    <ui:ScrollView name="roster" class="roster" />
+                </ui:VisualElement>
+                <ui:VisualElement class="squad-column panel">
+                    <ui:Label text="ESCUADRÓN (3/3)" class="section-title" />
+                    <ui:Label text="Agentes y presupuesto para la expedición." class="hint" />
+                    <ui:ScrollView class="squad-scroll">
+                        <ui:VisualElement name="slot-0" class="slot">
+                            <ui:Button name="select-slot-0" class="slot-button">
+                                <ui:VisualElement name="slot-portrait-0" class="slot-portrait" />
+                                <ui:VisualElement class="slot-content">
+                                    <ui:VisualElement class="name-row"><ui:Label name="slot-name-0" class="agent-name" /><ui:VisualElement name="slot-stars-0" class="stars" /></ui:VisualElement>
+                                    <ui:VisualElement name="slot-stats-0" class="slot-stats" />
+                                    <ui:Label name="slot-weapon-0" class="equipped-weapon" />
+                                </ui:VisualElement>
+                            </ui:Button>
+                            <ui:VisualElement class="money-row">
+                                <ui:Label name="slot-money-0" class="money-label" />
+                                <ui:Button name="money-minus-0" text="−" class="money-button" />
+                                <ui:Button name="money-plus-0" text="+" class="money-button" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="slot-1" class="slot">
+                            <ui:Button name="select-slot-1" class="slot-button">
+                                <ui:VisualElement name="slot-portrait-1" class="slot-portrait" />
+                                <ui:VisualElement class="slot-content">
+                                    <ui:VisualElement class="name-row"><ui:Label name="slot-name-1" class="agent-name" /><ui:VisualElement name="slot-stars-1" class="stars" /></ui:VisualElement>
+                                    <ui:VisualElement name="slot-stats-1" class="slot-stats" />
+                                    <ui:Label name="slot-weapon-1" class="equipped-weapon" />
+                                </ui:VisualElement>
+                            </ui:Button>
+                            <ui:VisualElement class="money-row">
+                                <ui:Label name="slot-money-1" class="money-label" />
+                                <ui:Button name="money-minus-1" text="−" class="money-button" />
+                                <ui:Button name="money-plus-1" text="+" class="money-button" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                        <ui:VisualElement name="slot-2" class="slot">
+                            <ui:Button name="select-slot-2" class="slot-button">
+                                <ui:VisualElement name="slot-portrait-2" class="slot-portrait" />
+                                <ui:VisualElement class="slot-content">
+                                    <ui:VisualElement class="name-row"><ui:Label name="slot-name-2" class="agent-name" /><ui:VisualElement name="slot-stars-2" class="stars" /></ui:VisualElement>
+                                    <ui:VisualElement name="slot-stats-2" class="slot-stats" />
+                                    <ui:Label name="slot-weapon-2" class="equipped-weapon" />
+                                </ui:VisualElement>
+                            </ui:Button>
+                            <ui:VisualElement class="money-row">
+                                <ui:Label name="slot-money-2" class="money-label" />
+                                <ui:Button name="money-minus-2" text="−" class="money-button" />
+                                <ui:Button name="money-plus-2" text="+" class="money-button" />
+                            </ui:VisualElement>
+                        </ui:VisualElement>
+                    </ui:ScrollView>
+                </ui:VisualElement>
+                <ui:ScrollView class="detail-column panel">
+                    <ui:VisualElement class="agent-detail">
+                        <ui:VisualElement name="detail-portrait" class="detail-portrait" />
+                        <ui:VisualElement class="detail-content">
+                            <ui:Label name="detail-name" class="detail-name" />
+                            <ui:VisualElement name="detail-stars" class="stars" />
+                            <ui:Label name="detail-description" class="detail-description" />
+                            <ui:Label name="detail-career" class="hint" />
+                        </ui:VisualElement>
+                    </ui:VisualElement>
+                    <ui:Label name="weapon-heading" class="section-title" />
+                    <ui:Label name="equipped-weapon" class="hint" />
+                    <ui:VisualElement name="weapons" class="weapons" />
+                    <ui:Label name="upgrade-heading" class="section-title" />
+                    <ui:VisualElement name="skill-upgrades" class="skill-upgrades" />
+                </ui:ScrollView>
+            </ui:VisualElement>
+            <ui:Label name="error" class="error" />
+            <ui:VisualElement class="footer">
+                <ui:Button name="random-button" text="SELECCIONAR ALEATORIAMENTE" class="secondary-button" />
+                <ui:VisualElement name="stat-guide" class="stat-guide" />
+                <ui:Button name="launch-button" text="INICIAR EXPEDICIÓN" class="primary-button" />
+            </ui:VisualElement>
+        </ui:VisualElement>
+        <ui:Label name="weapon-tooltip" class="weapon-tooltip" picking-mode="Ignore" />
+    </ui:VisualElement>
+</ui:UXML>

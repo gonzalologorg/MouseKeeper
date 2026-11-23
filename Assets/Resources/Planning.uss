@@ -1,0 +1,94 @@
+.planning-root {
+    flex-grow: 1;
+    padding: 10px 14px;
+    background-color: #171411;
+    color: #f0e7d9;
+    -unity-font: url("Inter.ttf");
+}
+.header { flex-direction: row; align-items: center; min-height: 48px; border-bottom-width: 1px; border-bottom-color: #514236; }
+.title { flex-grow: 1; font-size: 27px; color: #f0e7d9; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.header-funds { font-size: 15px; color: #d6ad61; -unity-font: url("Rajdhani-SemiBold.ttf"); }
+.header-lives { font-size: 16px; margin-left: 18px; color: #f0e7d9; -unity-font: url("Rajdhani-SemiBold.ttf"); }
+.language-button { margin-left: 10px; padding: 3px 7px; background-color: #514236; color: #f0e7d9; border-width: 0; border-radius: 3px; }
+.result { min-height: 20px; color: #a99b8b; white-space: normal; font-size: 12px; }
+.planner { flex-grow: 1; min-height: 0; }
+.columns { flex-grow: 1; flex-direction: row; min-height: 0; }
+.panel { background-color: #24201c; border-radius: 5px; padding: 8px; min-height: 0; }
+.roster-column { width: 31%; margin-right: 8px; }
+.squad-column { width: 32%; margin-right: 8px; }
+.detail-column { flex-grow: 1; min-width: 0; }
+.section-title { font-size: 18px; color: #f0e7d9; margin: 0 0 3px 0; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.hint { color: #a99b8b; font-size: 11px; margin-bottom: 5px; white-space: normal; }
+.roster, .squad-scroll { flex-grow: 1; min-height: 0; }
+.agent-row { flex-direction: row; align-items: center; min-height: 62px; margin: 0 0 5px 0; padding: 4px; background-color: #302922; border-width: 1px; border-color: #514236; border-radius: 4px; -unity-text-align: middle-left; }
+.agent-row:hover { background-color: #3a3028; border-color: #e99338; }
+.agent-row:disabled { opacity: 0.55; }
+.roster-content, .slot-content { flex-grow: 1; min-width: 0; }
+.name-row { flex-direction: row; align-items: center; }
+.agent-name { font-size: 16px; color: #f0e7d9; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.agent-cost { flex-grow: 1; -unity-text-align: middle-right; color: #d6ad61; font-size: 14px; -unity-font: url("Rajdhani-SemiBold.ttf"); }
+.agent-status { color: #a99b8b; font-size: 10px; }
+.roster-portrait, .slot-portrait, .detail-portrait { overflow: hidden; background-color: #514236; border-radius: 4px; margin-right: 8px; flex-shrink: 0; }
+.roster-portrait { width: 50px; height: 50px; }
+.slot-portrait { width: 68px; height: 68px; }
+.detail-portrait { width: 88px; height: 88px; }
+.portrait-image { flex-grow: 1; }
+.portrait-fallback { flex-grow: 1; align-items: center; justify-content: center; }
+.portrait-head { width: 32%; height: 32%; border-radius: 50%; background-color: #f0e7d9; opacity: 0.8; }
+.portrait-body { width: 60%; height: 30%; border-top-left-radius: 20px; border-top-right-radius: 20px; background-color: #f0e7d9; opacity: 0.8; margin-top: 2px; }
+.portrait-initial { position: absolute; right: 3px; bottom: 1px; color: #171411; font-size: 12px; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.stars { flex-direction: row; margin-left: 6px; }
+.star { font-size: 14px; margin: 0; }
+.star-filled { color: #d6ad61; }
+.star-empty { color: #61554a; }
+.slot { flex-shrink: 0; background-color: #302922; border-width: 1px; border-color: #514236; border-radius: 4px; margin-bottom: 7px; padding: 4px; }
+.slot:hover { background-color: #3a3028; }
+.slot-selected { background-color: #372b20; border-color: #e99338; }
+.slot-selected .agent-name { color: #e99338; }
+.slot-button { flex-direction: row; align-items: center; background-color: rgba(0,0,0,0); border-width: 0; margin: 0; padding: 0; -unity-text-align: middle-left; }
+.slot-button:hover { background-color: rgba(0,0,0,0); }
+.slot-stats { flex-direction: row; flex-wrap: wrap; }
+.stat-cell { flex-direction: row; align-items: center; margin-right: 4px; }
+.stat-icon { width: 16px; height: 16px; margin-right: 4px; }
+.stat-value { font-size: 13px; min-width: 12px; color: #f0e7d9; -unity-font: url("Rajdhani-SemiBold.ttf"); }
+.equipped-weapon { color: #d6ad61; font-size: 12px; margin-top: 3px; }
+.money-row { flex-direction: row; align-items: center; justify-content: flex-end; }
+.money-label { flex-grow: 1; color: #a99b8b; font-size: 12px; }
+.money-button, .skill-button { width: 28px; height: 25px; padding: 0; background-color: #514236; color: #f0e7d9; border-width: 0; border-radius: 3px; }
+.money-button:hover, .skill-button:hover { background-color: #e99338; color: #171411; }
+.money-button:disabled, .skill-button:disabled { opacity: 0.3; }
+.agent-detail { flex-direction: row; align-items: center; padding-bottom: 8px; margin-bottom: 7px; border-bottom-width: 1px; border-bottom-color: #514236; }
+.detail-content { flex-grow: 1; min-width: 0; }
+.detail-name { font-size: 24px; color: #f0e7d9; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.detail-description { color: #a99b8b; white-space: normal; font-size: 11px; }
+.weapons { flex-direction: row; flex-wrap: wrap; margin-bottom: 5px; }
+.weapon-tile { width: 56px; height: 56px; margin: 0 3px 3px 0; }
+.weapon-card { flex-grow: 1; align-items: center; justify-content: center; margin: 0; padding: 2px; background-color: #302922; border-width: 1px; border-color: #514236; border-radius: 3px; }
+.weapon-card:hover { background-color: #3a3028; }
+.weapon-selected { background-color: #3d2c20; border-color: #e99338; }
+.weapon-icon { width: 40px; height: 33px; -unity-background-scale-mode: scale-to-fit; }
+.weapon-details { color: #a99b8b; font-size: 10px; -unity-text-align: middle-center; }
+.weapon-mark { position: absolute; right: 2px; top: 0; color: #e99338; font-size: 14px; }
+.weapon-tooltip { display: none; position: absolute; max-width: 200px; padding: 4px 6px; background-color: #171411; border-width: 1px; border-color: #e99338; border-radius: 3px; color: #f0e7d9; font-size: 11px; white-space: normal; }
+.skill-upgrades { flex-direction: column; }
+.upgrade-row { flex-direction: row; align-items: center; min-height: 22px; border-bottom-width: 1px; border-bottom-color: #382f27; }
+.upgrade-row .skill-button { height: 20px; }
+.upgrade-name { width: 86px; color: #f0e7d9; font-size: 11px; }
+.upgrade-value { width: 20px; -unity-text-align: middle-center; color: #f0e7d9; -unity-font: url("Rajdhani-SemiBold.ttf"); }
+.upgrade-bar { flex-grow: 1; flex-direction: row; margin-right: 5px; }
+.upgrade-segment { flex-grow: 1; height: 8px; margin-right: 2px; background-color: #514236; }
+.upgrade-segment-filled { background-color: #e99338; }
+.error { min-height: 16px; color: #ff9b89; white-space: normal; font-size: 11px; }
+.footer { flex-direction: row; align-items: center; min-height: 62px; border-top-width: 1px; border-top-color: #514236; }
+.stat-guide { flex-grow: 1; flex-direction: row; min-width: 0; padding: 0 8px; }
+.guide-item { flex-grow: 1; flex-basis: 0; margin-right: 5px; }
+.guide-name { color: #d6ad61; font-size: 11px; -unity-font: url("BarlowCondensed-SemiBold.ttf"); }
+.guide-description { color: #a99b8b; white-space: normal; font-size: 9px; }
+.secondary-button, .primary-button, .action-button { min-width: 190px; min-height: 42px; border-width: 1px; border-radius: 4px; -unity-font: url("BarlowCondensed-SemiBold.ttf"); font-size: 16px; }
+.secondary-button { background-color: #302922; border-color: #514236; color: #f0e7d9; }
+.secondary-button:hover { background-color: #3a3028; }
+.primary-button, .action-button { background-color: #e99338; border-color: #e99338; color: #171411; }
+.primary-button:hover, .action-button:hover { background-color: #f0a750; }
+.game-over { flex-grow: 1; justify-content: center; align-items: center; }
+.game-over-message { white-space: normal; font-size: 18px; margin: 20px; }
+.button-row { flex-direction: row; }

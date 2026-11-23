@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Buen trabajo ahí.",
+    "Mantengamos el ritmo.",
+    "Sala despejada. Sigamos.",
+    "Podemos seguir adelante.",
+    "¿Seguro que no queda ninguna?"
+  ],
+  "injured": [
+    "Estoy asustado y herido.",
+    "Esto se está poniendo feo.",
+    "Mi resistencia está casi agotada.",
+    "Necesito curarme pronto.",
+    "Me duele hasta respirar."
+  ],
+  "purchase": [
+    "Esto puede servirnos.",
+    "Espero que valga la pena.",
+    "Ojalá me mantenga a salvo.",
+    "Compra calculada.",
+    "Ahora estoy mejor equipado."
+  ],
+  "healed": [
+    "Recuperé algo de fuerza.",
+    "Eso era justo lo que necesitaba.",
+    "Condición estabilizada.",
+    "Esto me da otra oportunidad.",
+    "Creí que era el final."
+  ],
+  "bossDefeated": [
+    "Superamos al jefe.",
+    "¡No puedo creer que sobrevivimos!",
+    "El jefe ha caído.",
+    "Buen trabajo, lo logramos.",
+    "Objetivo principal eliminado."
+  ],
+  "allyDied": [
+    "Te sacaremos de aquí.",
+    "¡No quiero perder a nadie más!",
+    "Mantengamos el control por él.",
+    "No puedo creerlo.",
+    "Aguanta, volveremos por ti."
+  ]
+}

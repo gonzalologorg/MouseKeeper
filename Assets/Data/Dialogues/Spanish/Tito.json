@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "El camino está libre.",
+    "Podemos seguir adelante.",
+    "Veamos qué dejaron.",
+    "¿Seguro que no queda ninguna?",
+    "Otra sala asegurada."
+  ],
+  "injured": [
+    "No pienso dejar mi paga aquí.",
+    "Necesito un respiro.",
+    "Cuidado, estoy muy débil.",
+    "Me cuesta mantenerme en pie.",
+    "No quiero morir aquí."
+  ],
+  "purchase": [
+    "Ojalá me mantenga a salvo.",
+    "Esto también es una inversión.",
+    "Esto debería ayudar.",
+    "Espero que valga la pena.",
+    "Veamos qué tal funciona."
+  ],
+  "healed": [
+    "Ahora puedo mantenerme en pie.",
+    "Qué alivio, sigo aquí.",
+    "Vuelvo a estar en marcha.",
+    "Eso era justo lo que necesitaba.",
+    "Una vida más para gastar."
+  ],
+  "bossDefeated": [
+    "Ese jefe debía guardar algo.",
+    "El camino está abierto.",
+    "Buen trabajo, lo logramos.",
+    "Lo conseguimos, equipo.",
+    "¿De verdad terminó?"
+  ],
+  "allyDied": [
+    "No debió terminar así.",
+    "Por favor, que no sea el final.",
+    "No voy a olvidarte.",
+    "No valía la pena perderte.",
+    "Aguanta, volveremos por ti."
+  ]
+}

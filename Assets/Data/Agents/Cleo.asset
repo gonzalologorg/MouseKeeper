@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d325c2848154d1cb88e95b67c9354ca, type: 3}
+  m_Name: Cleo
+  m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.AgentDefinition
+  profile:
+    name: Cleo
+    model: 0
+    health: 80
+    speed: 4.2
+    attackSpeed: 1.05
+    weapon: 0
+    bravery: 8
+    accuracy: 7
+    agility: 9
+    distrust: 8
+    greed: 6
+    teamwork: 7
+  modelPrefab: {fileID: 0}
+  placeholderColor: {r: 0.31500003, g: 0.9, b: 0.31500006, a: 1}
+  startingWeapon: {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}
+  missionCost: 10
+  dialogues:
+  - language: Spanish
+    file: {fileID: 4900000, guid: 4d2f32e102515a80bc5e4dd1c93f0ea0, type: 3}

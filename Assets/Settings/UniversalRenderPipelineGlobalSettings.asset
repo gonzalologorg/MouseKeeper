@@ -86,8 +86,6 @@ MonoBehaviour:
       - rid: 5747374308340793347
       - rid: 5747374308340793348
       - rid: 6588237625532874753
-      - rid: 6588237625532874754
-      - rid: 6588237625532874755
       - rid: 6588237625532874756
       - rid: 6588237625532874757
       - rid: 6588237625532874759
@@ -338,8 +336,8 @@ MonoBehaviour:
       type: {class: URPShaderStrippingSetting, ns: UnityEngine.Rendering.Universal, asm: Unity.RenderPipelines.Universal.Runtime}
       data:
         m_Version: 0
-        m_StripUnusedPostProcessingVariantsAndResources: 0
-        m_StripUnusedVariants: 0
+        m_StripUnusedPostProcessingVariantsAndResources: 1
+        m_StripUnusedVariants: 1
         m_StripScreenCoordOverrideVariants: 0
         m_Strip2DUnusedVariants: 0
     - rid: 6852985685364965377
@@ -482,7 +480,7 @@ MonoBehaviour:
         m_Version: 0
         m_ExportShaderVariants: 1
         m_ShaderVariantLogLevel: 2
-        m_StripRuntimeDebugShaders: 0
+        m_StripRuntimeDebugShaders: 1
     - rid: 6852985685364965393
       type: {class: ProbeVolumeRuntimeResources, ns: UnityEngine.Rendering, asm: Unity.RenderPipelines.Core.Runtime}
       data:

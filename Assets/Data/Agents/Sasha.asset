@@ -1,0 +1,34 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6d325c2848154d1cb88e95b67c9354ca, type: 3}
+  m_Name: Sasha
+  m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.AgentDefinition
+  profile:
+    name: Sasha
+    model: 0
+    health: 145
+    speed: 6
+    attackSpeed: 1.6
+    weapon: 0
+    bravery: 2
+    accuracy: 3
+    agility: 1
+    distrust: 4
+    greed: 10
+    teamwork: 9
+  modelPrefab: {fileID: 0}
+  placeholderColor: {r: 0.9, g: 0.31500003, b: 0.78299993, a: 1}
+  startingWeapon: {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}
+  missionCost: 18
+  dialogues:
+  - language: Spanish
+    file: {fileID: 4900000, guid: fbbf86f6320555e9854a109ab5be3bd0, type: 3}

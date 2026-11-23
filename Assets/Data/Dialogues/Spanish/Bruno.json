@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Está tranquilo por ahora.",
+    "Zona segura, por ahora.",
+    "Otra sala asegurada.",
+    "Buen trabajo ahí.",
+    "Nadie quedó atrás."
+  ],
+  "injured": [
+    "No me encuentro nada bien.",
+    "Me cuesta mantenerme en pie.",
+    "No quiero retrasarlos.",
+    "Mi estado es crítico.",
+    "Necesito curarme pronto."
+  ],
+  "purchase": [
+    "Dinero bien gastado.",
+    "Con esto llegaremos más lejos.",
+    "Una herramienta necesaria.",
+    "Veamos qué tal funciona.",
+    "Así podré ayudar mejor."
+  ],
+  "healed": [
+    "Recuperé algo de fuerza.",
+    "Gracias, ya puedo seguir.",
+    "Me siento mejor.",
+    "Ya estoy operativo.",
+    "Gracias por cuidarme, equipo."
+  ],
+  "bossDefeated": [
+    "Lo conseguimos, equipo.",
+    "Por fin terminó.",
+    "No lo habría logrado sin ustedes.",
+    "Misión cumplida. Sigamos.",
+    "Esa rata ya no manda."
+  ],
+  "allyDied": [
+    "Volveremos a buscarte.",
+    "No debió terminar así.",
+    "Mantengamos el control por él.",
+    "No te dejaremos atrás.",
+    "Nos faltas, compañero."
+  ]
+}

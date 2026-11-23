@@ -1,0 +1,7 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements">
+    <ui:Button name="weapon-button" class="weapon-card">
+        <ui:Image name="weapon-icon" class="weapon-icon" picking-mode="Ignore" />
+        <ui:Label name="weapon-details" class="weapon-details" picking-mode="Ignore" />
+        <ui:Label name="weapon-selected-mark" class="weapon-mark" text="✓" picking-mode="Ignore" />
+    </ui:Button>
+</ui:UXML>

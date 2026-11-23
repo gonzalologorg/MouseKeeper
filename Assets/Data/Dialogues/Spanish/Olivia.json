@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Una sala menos.",
+    "El camino está libre.",
+    "Revisen los rincones.",
+    "Está tranquilo por ahora.",
+    "Objetivo cumplido."
+  ],
+  "injured": [
+    "Que nadie se acerque demasiado.",
+    "Mi estado es crítico.",
+    "Me cuesta mantenerme en pie.",
+    "Tengo heridas graves.",
+    "Estoy perdiendo fuerzas."
+  ],
+  "purchase": [
+    "No me habrán engañado, ¿verdad?",
+    "Una compra útil.",
+    "Con esto llegaremos más lejos.",
+    "Justo lo que buscaba.",
+    "Mejor que guardar el dinero."
+  ],
+  "healed": [
+    "Un respiro, al fin.",
+    "Puedo continuar.",
+    "Ya puedo continuar.",
+    "Bien, pero sigo alerta.",
+    "Por suerte, sigo aquí."
+  ],
+  "bossDefeated": [
+    "Se acabó su reinado.",
+    "Misión cumplida. Sigamos.",
+    "El camino está abierto.",
+    "No celebremos antes de tiempo.",
+    "El jefe ha caído."
+  ],
+  "allyDied": [
+    "Nos faltas, compañero.",
+    "Perdimos a uno de los nuestros.",
+    "No debió terminar así.",
+    "Debemos recuperarlo.",
+    "No permitiré otra sorpresa."
+  ]
+}

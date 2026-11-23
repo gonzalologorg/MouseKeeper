@@ -1,0 +1,27 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8fae65f1b3c0472eb90282c2543d3544, type: 3}
+  m_Name: RoomArchitecture
+  m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.RoomArchitecture
+  walls:
+  - {fileID: 919132149155446097, guid: ba66c5a6b06cacb48889ed9d3182c7c5, type: 3}
+  - {fileID: 919132149155446097, guid: f2ea01bbc45882a4e8cdf7dbde5f861b, type: 3}
+  - {fileID: 919132149155446097, guid: f880bc24452e0e049867baa8eb0482f1, type: 3}
+  windows:
+  - {fileID: 919132149155446097, guid: ec33b63cb4ef3464cb482f032d55cc1e, type: 3}
+  - {fileID: 919132149155446097, guid: 6719e5c9802ff5c4b945229e6c55fda1, type: 3}
+  pillars:
+  - {fileID: 919132149155446097, guid: 447a23ba376fab646bcbb6384d709c3b, type: 3}
+  - {fileID: 919132149155446097, guid: 47f4f6884665f16489c9caad0b13d5d9, type: 3}
+  - {fileID: 919132149155446097, guid: 5dbfceaf690621c44bab0e88eff801b7, type: 3}
+  arch: {fileID: 919132149155446097, guid: 47a6c970ae5c6f944852f4beace77c1a, type: 3}
+  door: {fileID: 919132149155446097, guid: f7ee708f91689404a9b4c277856e5f25, type: 3}

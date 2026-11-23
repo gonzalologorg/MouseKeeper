@@ -1,0 +1,44 @@
+{
+  "roomCleared": [
+    "Podemos seguir adelante.",
+    "Espero que haya botín.",
+    "Otra sala asegurada.",
+    "Bien cubiertos, equipo.",
+    "Ya podemos avanzar."
+  ],
+  "injured": [
+    "No me encuentro nada bien.",
+    "Necesito ayuda, por favor.",
+    "No pienso dejar mi paga aquí.",
+    "No aguanto mucho más.",
+    "No me dejen solo, por favor."
+  ],
+  "purchase": [
+    "Justo lo que buscaba.",
+    "Esto puede servirnos.",
+    "Una buena inversión.",
+    "Esto también es una inversión.",
+    "Esto nos ayudará a todos."
+  ],
+  "healed": [
+    "Eso era justo lo que necesitaba.",
+    "Todavía puedo cobrar mi parte.",
+    "Puedo continuar.",
+    "Recuperé algo de fuerza.",
+    "Gracias por cuidarme, equipo."
+  ],
+  "bossDefeated": [
+    "Gran trabajo, compañeros.",
+    "Buen trabajo, lo logramos.",
+    "El camino está abierto.",
+    "Espero que paguen por esto.",
+    "Podemos respirar tranquilos."
+  ],
+  "allyDied": [
+    "El dinero no compensa esto.",
+    "¡Compañero, no te dejaremos!",
+    "Esto no debería haber pasado.",
+    "¡Necesitamos ayuda aquí!",
+    "Te sacaremos de aquí."
+  ]
+}
