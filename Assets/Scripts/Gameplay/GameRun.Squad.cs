@@ -71,6 +71,20 @@ namespace MouseKeeper
             return best;
         }
 
+        public PlayerController AgentSupportingMouse(CharacterController mouseController)
+        {
+            if (mouseController == null || !mouseController.enabled) return null;
+            Bounds mouseBounds = mouseController.bounds;
+            foreach (PlayerController agent in agents)
+            {
+                if (agent == null || agent.Dead || !agent.gameObject.activeInHierarchy) continue;
+                CharacterController agentController = agent.GetComponent<CharacterController>();
+                if (agentController == null || !agentController.enabled) continue;
+                if (MouseEnemy.IsStandingOnAgent(mouseBounds, agentController.bounds)) return agent;
+            }
+            return null;
+        }
+
         public PlayerController NearestAlly(PlayerController agent) => NearestAgent(agent.transform.position, agent);
 
         public bool IsLastSurvivingAgent(PlayerController agent)
@@ -95,6 +109,7 @@ namespace MouseKeeper
             {
                 if (IsTransitioning) return true;
                 if (currentRoom == null || !CanLeave(currentRoom)) return false;
+                if (currentRoom.kind == RoomKind.Corridor) return true;
                 foreach (RoomDoor door in currentRoom.doors)
                     if (door != null && door.IsOpen) return true;
                 return currentRoom.exitDoor != null && currentRoom.exitDoor.IsOpen;
@@ -298,9 +313,50 @@ namespace MouseKeeper
         public Vector3 ClampToCurrentRoom(Vector3 point)
         {
             Vector3 local = point - currentRoom.center;
+            if (currentRoom.kind == RoomKind.Corridor)
+            {
+                Room nearest = ClosestCorridor(point);
+                return nearest != null ? ProjectOntoCorridor(nearest, point) : point;
+            }
             local.x = Mathf.Clamp(local.x, -currentRoom.width * 0.5f + 0.7f, currentRoom.width * 0.5f - 0.7f);
             local.z = Mathf.Clamp(local.z, -currentRoom.depthSize * 0.5f + 0.7f, currentRoom.depthSize * 0.5f - 0.7f);
             return currentRoom.center + local;
+        }
+
+        static Vector3 ProjectOntoCorridor(Room room, Vector3 point)
+        {
+            Vector3 local = point - room.center;
+            float half = CorridorWidth * 0.5f - 0.7f;
+            Vector3 best = new Vector3(Mathf.Clamp(local.x, -half, half), local.y, Mathf.Clamp(local.z, -half, half));
+            float bestDistance = new Vector2(local.x - best.x, local.z - best.z).sqrMagnitude;
+            for (int i = 0; i < 4; i++)
+            {
+                if (room.neighbours[i] == null) continue;
+                bool horizontal = i % 2 == 1;
+                float sign = i < 2 ? 1f : -1f;
+                float edge = (horizontal ? room.width : room.depthSize) * 0.5f -
+                    (room.neighbours[i].kind == RoomKind.Corridor ? 0f : 0.7f);
+                float axis = Mathf.Clamp(horizontal ? local.x : local.z, Mathf.Min(0f, sign * edge), Mathf.Max(0f, sign * edge));
+                Vector3 candidate = horizontal ? new Vector3(axis, local.y, Mathf.Clamp(local.z, -half, half)) :
+                    new Vector3(Mathf.Clamp(local.x, -half, half), local.y, axis);
+                float distance = new Vector2(local.x - candidate.x, local.z - candidate.z).sqrMagnitude;
+                if (distance < bestDistance) { best = candidate; bestDistance = distance; }
+            }
+            return room.center + best;
+        }
+
+        Room ClosestCorridor(Vector3 point)
+        {
+            Room best = null;
+            float bestDistance = float.PositiveInfinity;
+            foreach (Room room in rooms)
+            {
+                if (room.kind != RoomKind.Corridor) continue;
+                Vector3 offset = ProjectOntoCorridor(room, point) - point;
+                offset.y = 0f;
+                if (offset.sqrMagnitude < bestDistance) { best = room; bestDistance = offset.sqrMagnitude; }
+            }
+            return best;
         }
 
         bool EligibleForPickup(PlayerController agent, ItemPickup pickup)

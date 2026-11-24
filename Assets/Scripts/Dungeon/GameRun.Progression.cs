@@ -57,6 +57,9 @@ namespace MouseKeeper
 
         void GenerateFloor()
         {
+            ClearPendingCorridorDoor();
+            ResetFloorSpecialties();
+            if (hexBackground != null) hexBackground.NewFloorPalette();
             floorGore?.ReleaseFloor();
             foreach (Room room in rooms)
             {
@@ -94,14 +97,14 @@ namespace MouseKeeper
                 completedFloorCredit += 1f;
             }
             else
-                completedFloorCredit += 1f - (float)ClearedRoomCount() / rooms.Count;
+                completedFloorCredit += 1f - (float)ClearedRoomCount() / Mathf.Max(1, ChamberCount());
         }
 
         bool FloorCleared()
         {
             if (bossRoom == null || !bossRoom.bossDefeated) return false;
             foreach (Room room in rooms)
-                if (!room.visited || !room.cleared || room.spawning) return false;
+                if (room.kind != RoomKind.Corridor && (!room.visited || !room.cleared || room.spawning)) return false;
             return true;
         }
 
@@ -132,7 +135,9 @@ namespace MouseKeeper
             {
                 Room room = queue.Dequeue();
                 foreach (Room neighbour in room.neighbours)
-                    if (neighbour != null && neighbour.visited && CanLeave(neighbour) && !previous.ContainsKey(neighbour))
+                    if (neighbour != null && CanLeave(neighbour) &&
+                        (neighbour.visited || neighbour.kind == RoomKind.Corridor && room.kind == RoomKind.Corridor) &&
+                        !previous.ContainsKey(neighbour))
                     {
                         previous[neighbour] = room;
                         queue.Enqueue(neighbour);
@@ -156,7 +161,8 @@ namespace MouseKeeper
         void TravelToClearedRoom(Room destination)
         {
             if (destination == currentRoom) return;
-            if (!destination.visited || !CanLeave(destination))
+            bool hallwayRoute = currentRoom.kind == RoomKind.Corridor && destination.kind == RoomKind.Corridor;
+            if ((!destination.visited && !hallwayRoute) || !CanLeave(destination))
             {
                 ShowMessage("Solo puedes seleccionar salas ya despejadas.");
                 return;
@@ -165,6 +171,11 @@ namespace MouseKeeper
             {
                 ShowMessage("Limpia la sala antes de salir.");
                 return;
+            }
+            if (currentRoom.kind == RoomKind.Corridor)
+            {
+                if (destination.kind == RoomKind.Corridor) { OrderCorridorSquad(destination.center, destination); return; }
+                if (QueueCorridorDoor(destination)) return;
             }
             pendingVent = false;
             pendingExit = false;
@@ -254,8 +265,12 @@ namespace MouseKeeper
                 foreach (PlayerController agent in agents)
                     if (agent != null && !agent.Dead) agent.RoomEnter();
             }
-            foreach (MouseEnemy mouse in mice)
-                if (mouse != null && !mouse.IsDefeated) mouse.TakeDamage(float.MaxValue, player);
+            for (int generation = 0; generation < 4 && !currentRoom.cleared; generation++)
+            {
+                mice = currentRoom.root.GetComponentsInChildren<MouseEnemy>();
+                foreach (MouseEnemy mouse in mice)
+                    if (mouse != null && !mouse.IsDefeated) mouse.TakeDamage(float.MaxValue, player);
+            }
             if (currentRoom.enemies == 0 && !currentRoom.cleared) CompleteCombatRoom(currentRoom);
         }
 #endif
@@ -294,6 +309,11 @@ namespace MouseKeeper
             }
             transitionDelay -= Time.deltaTime;
             if (IsTransitioning || currentRoom == null) return;
+            UpdateCorridorContext();
+            UpdatePendingCorridorDoor();
+            if (IsTransitioning) return;
+            UpdateSpecialties();
+            if (IsTransitioning) return;
             if (keyboard != null)
             {
                 if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame)
@@ -336,11 +356,18 @@ namespace MouseKeeper
                         return;
                     }
             if (!mouse.rightButton.wasPressedThisFrame || FormationButtonsRect().Contains(guiPosition)) return;
+            ClearPendingCorridorDoor();
             if (minimap != null && minimap.ContainsScreenPoint(mousePosition))
             {
                 if (minimap.TryGetRoomAtScreenPoint(mousePosition, out Vector2Int position))
                     foreach (Room room in rooms)
-                        if (room.position == position) { TravelToClearedRoom(room); break; }
+                        if (room.position == position)
+                        {
+                            if (currentRoom.kind == RoomKind.Corridor && room.kind == RoomKind.Corridor)
+                                OrderCorridorSquad(room.center, room);
+                            else if (!QueueCorridorDoor(room)) TravelToClearedRoom(room);
+                            break;
+                        }
                 return;
             }
             Ray ray = viewCamera.ScreenPointToRay(mousePosition);
@@ -363,6 +390,16 @@ namespace MouseKeeper
                 RoomDoor door = hit.collider.GetComponentInParent<RoomDoor>();
                 if (door != null)
                 {
+                    if (currentRoom.kind == RoomKind.Corridor)
+                    {
+                        foreach (Room candidate in rooms)
+                            for (int direction = 0; direction < 4; direction++)
+                                if (candidate.doors[direction] == door)
+                                {
+                                    Room destination = candidate.kind == RoomKind.Corridor ? candidate.neighbours[direction] : candidate;
+                                    if (destination != null && destination.kind != RoomKind.Corridor && QueueCorridorDoor(destination)) return;
+                                }
+                    }
                     if (door == currentRoom.exitDoor)
                     {
                         if (!currentRoom.bossDefeated || !CanLeave(currentRoom)) ShowMessage("Derrota al jefe y despeja esta sala.");
@@ -377,7 +414,9 @@ namespace MouseKeeper
                     for (int i = 0; i < 4; i++)
                         if (currentRoom.doors[i] == door && currentRoom.neighbours[i] != null)
                         {
-                            if (!CanLeave(currentRoom) || transitionDelay > 0f)
+                            if (currentRoom.neighbours[i] == bossRoom && !BossRevealed())
+                                ShowMessage("La puerta está cerrada.");
+                            else if (!CanLeave(currentRoom) || transitionDelay > 0f)
                                 ShowMessage("Limpia la sala antes de salir.");
                             else
                             {
@@ -399,9 +438,24 @@ namespace MouseKeeper
             if (hitsGround)
             {
                 Vector3 point = ray.GetPoint(distance);
+                if (currentRoom.kind == RoomKind.Corridor)
+                {
+                    Room corridor = ClosestCorridor(point);
+                    if (corridor != null)
+                    {
+                        Vector3 offset = ProjectOntoCorridor(corridor, point) - point;
+                        offset.y = 0f;
+                        if (offset.sqrMagnitude <= 1f)
+                        {
+                            OrderCorridorSquad(point, corridor);
+                            return;
+                        }
+                    }
+                }
                 foreach (Room room in rooms)
                 {
-                    if (room == currentRoom || !room.visited || !CanLeave(room)) continue;
+                    bool hallwayRoute = currentRoom.kind == RoomKind.Corridor && room.kind == RoomKind.Corridor;
+                    if (room == currentRoom || (!room.visited && !hallwayRoute) || !CanLeave(room)) continue;
                     Vector3 target = point - room.center;
                     if (Mathf.Abs(target.x) > room.width * 0.5f || Mathf.Abs(target.z) > room.depthSize * 0.5f) continue;
                     TravelToClearedRoom(room);
@@ -419,6 +473,11 @@ namespace MouseKeeper
 
         void OrderSquad(Vector3 point)
         {
+            if (currentRoom != null && currentRoom.kind == RoomKind.Corridor)
+            {
+                OrderCorridorSquad(point, ClosestCorridor(point));
+                return;
+            }
             ClearWeaponOrder();
             for (int i = 0; i < agents.Count; i++)
             {
@@ -438,12 +497,28 @@ namespace MouseKeeper
         {
             if (viewCamera == null) return;
 
+            if (hexBackground != null)
+            {
+                float health = 0f, maximum = 0f;
+                foreach (PlayerController agent in agents)
+                    if (agent != null) { maximum += agent.MaxHealth; if (!agent.Dead) health += agent.Health; }
+                hexBackground.SetHealthFraction(maximum > 0f ? health / maximum : 1f);
+            }
+
             Transform cameraTransform = viewCamera.transform;
             Vector3 position = cameraTransform.position - cameraShakeOffset;
             if (player != null)
             {
                 if (currentRoom != null && Mathf.Abs(viewCamera.aspect - cameraAspect) > 0.001f)
                     FitCameraToRoom(currentRoom);
+                if (currentRoom != null && currentRoom.kind == RoomKind.Corridor)
+                {
+                    Vector3 center = Vector3.zero;
+                    int living = 0;
+                    foreach (PlayerController agent in agents)
+                        if (agent != null && !agent.Dead) { center += agent.transform.position; living++; }
+                    if (living > 0) { cameraFocus = center / living; cameraFocus.y = 0f; }
+                }
                 position = Vector3.Lerp(position, cameraFocus - cameraTransform.forward * cameraDistance,
                     1f - Mathf.Exp(-8f * Time.deltaTime));
             }

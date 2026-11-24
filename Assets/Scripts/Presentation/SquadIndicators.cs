@@ -13,8 +13,10 @@ namespace MouseKeeper
             public CharacterController controller;
             public GameObject root;
             public Text name;
+            public Image specialtyIcon;
             public AgentHealthRing health;
             public int displayedLevel;
+            public Specialty displayedSpecialty;
             public readonly List<Speech> speeches = new List<Speech>();
             public readonly Queue<AgentEmotion> emotions = new Queue<AgentEmotion>();
             public Image emotion;
@@ -37,6 +39,10 @@ namespace MouseKeeper
         RectTransform canvasRect;
         Font font;
         readonly Sprite[] emotionSprites = new Sprite[6];
+        readonly Texture2D[] specialtyTextures = new Texture2D[6];
+        readonly Sprite[] specialtySprites = new Sprite[6];
+
+        public Texture2D SpecialtyIcon(Specialty specialty) => specialtyTextures[(int)specialty];
 
         public void Initialize(Camera camera)
         {
@@ -55,6 +61,11 @@ namespace MouseKeeper
             CanvasScaler scaler = root.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1920f, 1080f);
+            for (int i = 1; i < specialtyTextures.Length; i++)
+            {
+                specialtyTextures[i] = PlanningController.CreateSpecialtyIcon(i);
+                specialtySprites[i] = Sprite.Create(specialtyTextures[i], new Rect(0, 0, 48, 48), new Vector2(0.5f, 0.5f));
+            }
             Texture2D atlas = Resources.Load<Texture2D>("EmotionIcons");
             if (atlas == null || atlas.width != 576 || atlas.height != 96)
                 Debug.LogError("The emotion icon atlas is missing or has incorrect dimensions.", this);
@@ -84,10 +95,18 @@ namespace MouseKeeper
             label.supportRichText = true;
             label.text = agent.Profile.NameWithLevel(14);
             label.color = agent.Profile.LevelColor;
-            label.rectTransform.sizeDelta = new Vector2(220f, 32f);
+            label.rectTransform.sizeDelta = new Vector2(320f, 32f);
             Outline outline = labelObject.GetComponent<Outline>();
             outline.effectColor = Color.black;
             outline.effectDistance = new Vector2(1f, -1f);
+
+            var specialtyObject = new GameObject("Specialty Icon", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+            specialtyObject.transform.SetParent(root.transform, false);
+            Image specialtyIcon = specialtyObject.GetComponent<Image>();
+            specialtyIcon.raycastTarget = false;
+            specialtyIcon.sprite = specialtySprites[(int)agent.Specialty];
+            specialtyIcon.enabled = specialtyIcon.sprite != null;
+            specialtyIcon.rectTransform.sizeDelta = new Vector2(24f, 24f);
 
             var emotionObject = new GameObject("Agent Emotion", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
             emotionObject.transform.SetParent(root.transform, false);
@@ -103,7 +122,8 @@ namespace MouseKeeper
             health.Initialize();
             indicators.Add(new Indicator {
                 agent = agent, controller = agent.GetComponent<CharacterController>(), root = root,
-                name = label, health = health, emotion = emotion, displayedLevel = agent.Profile.Level
+                name = label, specialtyIcon = specialtyIcon, health = health, emotion = emotion, displayedLevel = agent.Profile.Level,
+                displayedSpecialty = agent.Specialty
             });
         }
 
@@ -178,13 +198,17 @@ namespace MouseKeeper
 
                 RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, head, null, out Vector2 namePosition);
                 AgentProfile profile = indicator.agent.Profile;
-                if (indicator.displayedLevel != profile.Level)
+                if (indicator.displayedLevel != profile.Level || indicator.displayedSpecialty != indicator.agent.Specialty)
                 {
                     indicator.displayedLevel = profile.Level;
+                    indicator.displayedSpecialty = indicator.agent.Specialty;
                     indicator.name.text = profile.NameWithLevel(14);
                     indicator.name.color = profile.LevelColor;
+                    indicator.specialtyIcon.sprite = specialtySprites[(int)indicator.agent.Specialty];
+                    indicator.specialtyIcon.enabled = indicator.specialtyIcon.sprite != null;
                 }
                 indicator.name.rectTransform.anchoredPosition = namePosition + Vector2.up * 8f;
+                indicator.specialtyIcon.rectTransform.anchoredPosition = namePosition + new Vector2(-indicator.name.preferredWidth * 0.5f - 14f, 8f);
                 for (int j = indicator.speeches.Count - 1; j >= 0; j--)
                 {
                     Speech speech = indicator.speeches[j];
@@ -237,6 +261,10 @@ namespace MouseKeeper
                     if (Application.isPlaying) Destroy(sprite);
                     else DestroyImmediate(sprite);
                 }
+            foreach (Sprite sprite in specialtySprites)
+                if (sprite != null) { if (Application.isPlaying) Destroy(sprite); else DestroyImmediate(sprite); }
+            foreach (Texture2D texture in specialtyTextures)
+                if (texture != null) { if (Application.isPlaying) Destroy(texture); else DestroyImmediate(texture); }
         }
     }
 

@@ -16,30 +16,65 @@ namespace MouseKeeper
             occupied.Add(start.position, start);
             int extraRooms = ExpeditionSession.ExtraRooms(ExpeditionSession.Difficulty);
             int desired = Random.Range(5, 9) + (levelIndex >= ExpeditionSession.FloorCount - extraRooms ? 1 : 0);
-            while (rooms.Count < desired)
+            var chambers = new List<Room> { start };
+            var spine = new List<Room>();
+            Room previous = start;
+            int turn = Random.value < 0.5f ? 0 : 2;
+            bool bent = Random.value < 0.8f;
+            // One continuous hallway forms the backbone; rooms branch directly off it.
+            for (int i = 0; i < 5; i++)
             {
-                Room parent = rooms[Random.Range(0, rooms.Count)];
-                int first = Random.Range(0, 4);
-                for (int i = 0; i < 4; i++)
+                int direction = bent && i >= 3 ? turn : 1;
+                Vector2Int position = previous.position + Directions[direction];
+                var corridor = new Room { position = position, depth = previous.depth + 1, kind = RoomKind.Corridor };
+                previous.neighbours[direction] = corridor;
+                corridor.neighbours[(direction + 2) % 4] = previous;
+                rooms.Add(corridor);
+                occupied.Add(position, corridor);
+                spine.Add(corridor);
+                previous = corridor;
+            }
+
+            // Prefer a different hallway segment for each room before adding a second room.
+            int offset = Random.Range(0, spine.Count);
+            while (chambers.Count < desired)
+            {
+                bool added = false;
+                for (int n = 0; n < spine.Count && chambers.Count < desired; n++)
                 {
-                    int direction = (first + i) % 4;
-                    Vector2Int position = parent.position + Directions[direction];
-                    if (occupied.ContainsKey(position)) continue;
-                    var room = new Room { position = position, depth = parent.depth + 1 };
-                    parent.neighbours[direction] = room;
-                    room.neighbours[(direction + 2) % 4] = parent;
-                    rooms.Add(room);
-                    occupied.Add(position, room);
-                    break;
+                    Room corridor = spine[(n + offset) % spine.Count];
+                    int firstDirection = Random.Range(0, 4);
+                    for (int j = 0; j < 4; j++)
+                    {
+                        int direction = (firstDirection + j) % 4;
+                        Vector2Int position = corridor.position + Directions[direction];
+                        if (position.x < 0 || corridor.neighbours[direction] != null || occupied.ContainsKey(position)) continue;
+                        var chamber = new Room { position = position, depth = corridor.depth + 1 };
+                        corridor.neighbours[direction] = chamber;
+                        chamber.neighbours[(direction + 2) % 4] = corridor;
+                        rooms.Add(chamber);
+                        chambers.Add(chamber);
+                        occupied.Add(position, chamber);
+                        added = true;
+                        break;
+                    }
                 }
-                for (int i = 0; i < rooms.Count; i++)
+                if (!added)
                 {
-                    Room room = rooms[i];
-                    room.width = AxisSize(room.position.x, true);
-                    room.depthSize = AxisSize(room.position.y, false);
-                    room.center = new Vector3(AxisCenter(room.position.x, true), 0f, AxisCenter(room.position.y, false));
-                    room.hasPillars = i % 2 == 1;
+                    rooms.Clear();
+                    GenerateMaze();
+                    return;
                 }
+                offset = (offset + 1) % spine.Count;
+            }
+
+            for (int i = 0; i < rooms.Count; i++)
+            {
+                Room room = rooms[i];
+                room.width = AxisSize(room.position.x, true);
+                room.depthSize = AxisSize(room.position.y, false);
+                room.center = new Vector3(AxisCenter(room.position.x, true), 0f, AxisCenter(room.position.y, false));
+                room.hasPillars = room.kind != RoomKind.Corridor && i % 2 == 1;
             }
 
             float AxisSize(int index, bool horizontal)
@@ -60,13 +95,24 @@ namespace MouseKeeper
             bossRoom = start;
             foreach (Room room in rooms)
             {
+                if (room.kind == RoomKind.Corridor) continue;
                 if (room.depth <= bossRoom.depth) continue;
+                bool hasChildren = false;
+                foreach (Room neighbour in room.neighbours)
+                    if (neighbour != null && neighbour.depth > room.depth) { hasChildren = true; break; }
+                if (hasChildren) continue;
                 bool hasExterior = false;
                 foreach (Vector2Int direction in Directions)
                     if (!occupied.ContainsKey(room.position + direction)) { hasExterior = true; break; }
                 if (levelIndex != ExpeditionSession.FloorCount - 1 || hasExterior) bossRoom = room;
             }
-            var specialRooms = new List<Room>(rooms);
+            if (bossRoom == start)
+            {
+                rooms.Clear();
+                GenerateMaze();
+                return;
+            }
+            var specialRooms = new List<Room>(chambers);
             specialRooms.Remove(start);
             specialRooms.Remove(bossRoom);
             if (specialRooms.Count > 0)
@@ -90,12 +136,38 @@ namespace MouseKeeper
                     direction.y * (room.depthSize / 2f - 2f));
             }
             position.y = 0.05f;
-            PlaceSquad(position);
+            PlaceSquad(position, entryDirection);
             FitCameraToRoom(room);
             ArriveInRoom(room);
         }
 
-        void PlaceSquad(Vector3 position)
+        IEnumerator EnterFromIntro(Room room)
+        {
+            EnterRoom(room, 3);
+            IsTransitioning = true;
+            RoomDoor entrance = room.doors[3];
+            if (entrance != null) entrance.SetOpen(true);
+            Vector3 doorway = room.center + Vector3.left * (room.width * 0.5f - 0.6f);
+            doorway.y = 0.05f;
+            PlaceSquad(doorway, 3);
+            for (int i = 0; i < agents.Count; i++)
+            {
+                float offset = (i - (agents.Count - 1) * 0.5f) * 1.1f;
+                agents[i].SetDestination(room.center + Vector3.left * (room.width * 0.5f - 2.5f) + Vector3.forward * offset);
+            }
+            bool arrived;
+            do
+            {
+                arrived = true;
+                foreach (PlayerController agent in agents)
+                    if (!agent.Dead && !agent.ReachedDestination) arrived = false;
+                yield return null;
+            } while (!arrived);
+            if (entrance != null) entrance.SetOpen(false);
+            IsTransitioning = false;
+        }
+
+        void PlaceSquad(Vector3 position, int entryDirection = -1)
         {
             for (int i = 0; i < agents.Count; i++)
             {
@@ -103,7 +175,9 @@ namespace MouseKeeper
                 if (agent.Dead) continue;
                 CharacterController controller = agent.GetComponent<CharacterController>();
                 controller.enabled = false;
-                agent.transform.position = position + new Vector3((i - 1) * 1.1f, 0f, 0f);
+                float offset = (i - (agents.Count - 1) * 0.5f) * 1.1f;
+                agent.transform.position = position + (entryDirection % 2 == 1
+                    ? new Vector3(0f, 0f, offset) : new Vector3(offset, 0f, 0f));
                 controller.enabled = true;
                 agent.SetDestination(agent.transform.position);
             }
@@ -112,25 +186,28 @@ namespace MouseKeeper
 
         IEnumerator TravelToRoom(Room next, int direction)
         {
+            if (next == bossRoom && !BossRevealed()) yield break;
             ClearWeaponOrder();
             IsTransitioning = true;
             Room previous = currentRoom;
-            foreach (PlayerController agent in agents)
-                if (!agent.Dead) agent.RoomExit();
+            if (previous.kind != RoomKind.Corridor)
+                foreach (PlayerController agent in agents)
+                    if (!agent.Dead) agent.RoomExit();
             Vector2Int d = Directions[direction];
             Vector3 forward = new Vector3(d.x, 0f, d.y);
             Vector3 side = new Vector3(-forward.z, 0f, forward.x);
             float halfSize = direction % 2 == 0 ? previous.depthSize * 0.5f : previous.width * 0.5f;
             Vector3 doorway = previous.center + forward * halfSize;
-            previous.doors[direction].SetHint(false);
-            previous.doors[direction].SetOpen(true);
-            next.doors[(direction + 2) % 4].SetOpen(true);
-            yield return new WaitForSeconds(0.55f);
-            for (int phase = 0; phase < 2; phase++)
+            RoomDoor departureDoor = previous.doors[direction];
+            RoomDoor arrivalDoor = next.doors[(direction + 2) % 4];
+            if (departureDoor != null) { departureDoor.SetHint(false); departureDoor.SetOpen(true); }
+            if (arrivalDoor != null) arrivalDoor.SetOpen(true);
+            if (departureDoor != null || arrivalDoor != null) yield return new WaitForSeconds(0.55f);
+            for (int phase = previous.kind == RoomKind.Corridor ? -1 : 0; phase < 2; phase++)
             {
                 for (int i = 0; i < agents.Count; i++)
                     if (!agents[i].Dead)
-                        agents[i].SetDestination(doorway + forward * (phase == 0 ? -1.6f : 2f) + side * ((i - 1) * 0.8f));
+                        agents[i].SetDestination((phase < 0 ? previous.center : doorway + forward * (phase == 0 ? -1.6f : 2f)) + side * ((i - 1) * 0.8f));
                 bool arrived;
                 do
                 {
@@ -141,6 +218,8 @@ namespace MouseKeeper
                 } while (!arrived);
             }
             currentRoom = next;
+            previousRoom = previous;
+            previousRoomDirection = (direction + 2) % 4;
             FitCameraToRoom(next);
             transitionDelay = 0.5f;
             IsTransitioning = false;
@@ -149,6 +228,15 @@ namespace MouseKeeper
 
         void FitCameraToRoom(Room room)
         {
+            if (room.kind == RoomKind.Corridor)
+            {
+                cameraAspect = viewCamera.aspect;
+                cameraDistance = 30f;
+                viewCamera.orthographicSize = 11f;
+                viewCamera.farClipPlane = Mathf.Max(viewCamera.farClipPlane, 250f);
+                cameraFocus = room.center;
+                return;
+            }
             Vector3 right = viewCamera.transform.right;
             cameraAspect = viewCamera.aspect;
             Vector3 up = viewCamera.transform.up;
@@ -187,8 +275,13 @@ namespace MouseKeeper
             RefreshMinimap();
             RefreshDoors();
             while (TryBuyShopRevival()) { }
-            if (room.spawning) StartCoroutine(SpawnRoomMice(room));
-            else foreach (PlayerController agent in agents)
+            if (room.spawning)
+            {
+                if (room == bossRoom) StartCoroutine(SpawnBossEncounter(room));
+                else StartCoroutine(SpawnRoomMice(room));
+            }
+            else if (room.kind != RoomKind.Corridor)
+                foreach (PlayerController agent in agents)
                     if (!agent.Dead) agent.RoomEnter();
         }
 
@@ -197,16 +290,26 @@ namespace MouseKeeper
             room.root = new GameObject((room.kind == RoomKind.Combat ? "Room " : room.kind + " Room ") + room.position);
             room.root.transform.SetParent(transform);
             room.root.transform.position = room.center;
-            if (roomPrefab != null) Instantiate(roomPrefab, room.root.transform);
+            if (room.kind != RoomKind.Corridor && roomPrefab != null) Instantiate(roomPrefab, room.root.transform);
             room.floor = Block(room.root.transform, "Floor", new Vector3(0f, -0.5f, 0f),
-                new Vector3(room.width, 1f, room.depthSize), new Color(0.24f, 0.25f, 0.28f)).GetComponent<Collider>();
+                room.kind == RoomKind.Corridor ? new Vector3(CorridorWidth, 1f, CorridorWidth) : new Vector3(room.width, 1f, room.depthSize),
+                new Color(0.24f, 0.25f, 0.28f)).GetComponent<Collider>();
             int windowDirection = Random.Range(0, 4);
             for (int i = 0; i < 4; i++)
                 BuildWall(room, i, i == windowDirection || i == (windowDirection + 2) % 4);
+            if (room.kind == RoomKind.Corridor) BuildCorridor(room);
             foreach (Transform wall in room.walls)
                 foreach (Renderer renderer in wall.GetComponentsInChildren<Renderer>(true))
                     room.wallRendererStates[renderer] = renderer.enabled;
             BuildPillars(room);
+            SetWorldLayer(room.root);
+            BuildFloorShadows(room);
+            if (room.kind == RoomKind.Corridor)
+            {
+                room.cleared = true;
+                UpdateDoors(room);
+                return;
+            }
             if (room == rooms[0])
             {
                 room.cleared = true;
@@ -228,9 +331,59 @@ namespace MouseKeeper
             UpdateDoors(room);
         }
 
+        public const float CorridorWidth = 7f;
+
+        void BuildCorridor(Room room)
+        {
+            float half = CorridorWidth * 0.5f;
+            Color floorColor = new Color(0.24f, 0.25f, 0.28f);
+            for (int i = 0; i < 4; i++)
+            {
+                bool horizontal = i % 2 == 1;
+                float sign = i < 2 ? 1f : -1f;
+                if (room.neighbours[i] == null)
+                {
+                    Vector3 center = horizontal ? new Vector3(sign * half, 0f, 0f) : new Vector3(0f, 0f, sign * half);
+                    BuildCorridorWall(room, center, CorridorWidth, horizontal);
+                    continue;
+                }
+                float length = (horizontal ? room.width : room.depthSize) * 0.5f - half;
+                float middle = sign * (half + length * 0.5f);
+                Vector3 floor = horizontal ? new Vector3(middle, -0.5f, 0f) : new Vector3(0f, -0.5f, middle);
+                Vector3 floorSize = horizontal ? new Vector3(length, 1f, CorridorWidth) : new Vector3(CorridorWidth, 1f, length);
+                Block(room.root.transform, "Corridor floor", floor, floorSize, floorColor);
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    Vector3 wall = horizontal ? new Vector3(middle, 0f, side * half) : new Vector3(side * half, 0f, middle);
+                    BuildCorridorWall(room, wall, length, !horizontal);
+                }
+            }
+        }
+
+        void BuildCorridorWall(Room room, Vector3 position, float length, bool alongZ)
+        {
+            var wall = new GameObject("Corridor inner wall");
+            wall.transform.SetParent(room.root.transform, false);
+            wall.transform.localPosition = position;
+            wall.transform.localRotation = Quaternion.Euler(0f, alongZ ? 90f : 0f, 0f);
+            BuildWallSpan(wall.transform, -length * 0.5f, length, false);
+        }
+
+        static void SetWorldLayer(GameObject root)
+        {
+            int world = LayerMask.NameToLayer("World");
+            if (world < 0)
+            {
+                Debug.LogError("La capa World no está configurada.");
+                return;
+            }
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = world;
+        }
+
         int MouseCountForRoom(Room room)
         {
             bool hasBoss = room == bossRoom;
+            if (hasBoss) return 1;
             if (!hasBoss && micePerRoom <= 0) return 0;
 
             int survivors = 0;
@@ -247,9 +400,46 @@ namespace MouseKeeper
 
             float relativeArea = room.width * room.depthSize / (roomWidth * roomDepth);
             float areaScale = Mathf.Clamp(relativeArea, 0.8f, 1.25f);
-            float baseline = (hasBoss ? 1f : micePerRoom * 0.8f) + levelIndex * 0.5f;
+            float baseline = micePerRoom * 0.8f + levelIndex * 0.5f;
             float difficulty = ExpeditionSession.DifficultyMultiplier(ExpeditionSession.Difficulty);
-            return Mathf.Clamp(Mathf.FloorToInt(baseline * areaScale * squadScale * difficulty + 0.5f), 1, 14);
+            int previousCount = 3 * Mathf.Clamp(Mathf.FloorToInt(baseline * areaScale * squadScale * difficulty + 0.5f), 1, 14);
+            return Mathf.FloorToInt(previousCount * 1.25f + 0.5f);
+        }
+
+        const int BossRatLimit = 5;
+        const float BossRatSpawnInterval = 2f;
+
+        static int BossRatCount(Room room)
+        {
+            int livingBoss = room.boss != null && !room.boss.IsDefeated ? 1 : 0;
+            return Mathf.Max(0, room.enemies - livingBoss);
+        }
+
+        static int BossOffspringCount(Room room) => Mathf.Clamp(BossRatLimit - (BossRatCount(room) - 1), 0, 2);
+
+        IEnumerator SpawnBossEncounter(Room room)
+        {
+            int generation = ++room.spawnGeneration;
+            if (!SpawnMouse(room, room.center, true))
+            {
+                room.enemies = 0;
+                room.spawning = false;
+                Debug.LogError("No se pudo crear el jefe de la sala.", this);
+                yield break;
+            }
+            room.spawning = false;
+            foreach (PlayerController agent in agents)
+                if (agent != null && !agent.Dead) agent.RoomEnter();
+            UpdateDoors(room);
+
+            while (!Finished && currentRoom == room && room.spawnGeneration == generation && !room.bossDefeated && room.boss != null && !room.boss.IsDefeated)
+            {
+                yield return new WaitForSeconds(BossRatSpawnInterval);
+                if (Finished || currentRoom != room || room.spawnGeneration != generation || room.cleared || room.bossDefeated ||
+                    room.boss == null || room.boss.IsDefeated || IsTransitioning) yield break;
+                if (BossRatCount(room) >= BossRatLimit) continue;
+                if (SpawnMouse(room, room.center, false)) room.enemies++;
+            }
         }
 
         IEnumerator SpawnRoomMice(Room room)
@@ -266,7 +456,7 @@ namespace MouseKeeper
                     Transform spot = layout.hideSpots[i % layout.hideSpots.Length];
                     if (spot != null) hide = spot.position;
                 }
-                if (!SpawnMouse(room, hide, room == bossRoom && i == 0)) room.enemies--;
+                if (!SpawnMouse(room, hide, false)) room.enemies--;
                 if (i + 1 < count)
                 {
                     yield return new WaitForSeconds(Mathf.Max(0.01f, mouseSpawnInterval));
@@ -293,12 +483,31 @@ namespace MouseKeeper
             side.transform.localPosition = center;
             side.transform.localRotation = Quaternion.Euler(0f, horizontal ? 0f : 90f, 0f);
             bool isExit = room.exitDirection == direction;
-            if (room.neighbours[direction] == null && !isExit)
+            bool isEntrance = levelIndex == 0 && room == rooms[0] && direction == 3;
+            if (room.kind == RoomKind.Corridor)
+            {
+                Room neighbour = room.neighbours[direction];
+                if (neighbour == null || neighbour.kind == RoomKind.Corridor) return;
+                float corridorSide = (CorridorWidth - 3.9f) * 0.5f;
+                BuildWallSpan(side.transform, -CorridorWidth * 0.5f, corridorSide, false);
+                BuildWallSpan(side.transform, 1.95f, corridorSide, false);
+                var corridorDoorway = new GameObject("Doorway");
+                corridorDoorway.transform.SetParent(side.transform, false);
+                RoomDoor corridorDoor = corridorDoorway.AddComponent<RoomDoor>();
+                corridorDoor.Initialize(roomArchitecture.arch, roomArchitecture.door);
+                room.doors[direction] = corridorDoor;
+                return;
+            }
+            if (room.neighbours[direction] == null && !isExit && !isEntrance)
             {
                 BuildWallSpan(side.transform, -length * 0.5f, length, includeWindow);
                 return;
             }
-            const float archWidth = 3.9f;
+            // The corridor owns the shared doorway and the wall immediately beside it.
+            // Leave that entire span free here so its surfaces are not drawn twice.
+            bool corridorNeighbour = room.neighbours[direction] != null &&
+                room.neighbours[direction].kind == RoomKind.Corridor;
+            float archWidth = corridorNeighbour ? CorridorWidth : 3.9f;
             float section = (length - archWidth) * 0.5f;
             BuildWallSpan(side.transform, -length * 0.5f, section, includeWindow);
             BuildWallSpan(side.transform, archWidth * 0.5f, section, false);
@@ -306,6 +515,9 @@ namespace MouseKeeper
             doorway.transform.SetParent(side.transform, false);
             RoomDoor door = doorway.AddComponent<RoomDoor>();
             door.Initialize(roomArchitecture.arch, roomArchitecture.door);
+            if (corridorNeighbour)
+                foreach (Renderer renderer in doorway.GetComponentsInChildren<Renderer>(true))
+                    renderer.enabled = false;
             if (isExit) room.exitDoor = door;
             else room.doors[direction] = door;
         }
@@ -354,9 +566,10 @@ namespace MouseKeeper
                 RoomDoor door = room.doors[i];
                 Room neighbour = room.neighbours[i];
                 if (door == null || neighbour == null) continue;
-                bool open = room.visited && neighbour.visited && CanLeave(room) && CanLeave(neighbour);
+                bool locked = neighbour == bossRoom && !BossRevealed();
+                bool open = !locked && room.visited && neighbour.visited && CanLeave(room) && CanLeave(neighbour);
                 door.SetOpen(open);
-                door.SetHint(room == currentRoom && room.visited && CanLeave(room) && !neighbour.visited);
+                door.SetHint(!locked && room == currentRoom && room.visited && CanLeave(room) && !neighbour.visited);
             }
             if (room.exitDoor != null) room.exitDoor.SetOpen(room.bossDefeated && CanLeave(room));
         }
@@ -368,44 +581,36 @@ namespace MouseKeeper
 
         bool CanLeave(Room room) => !room.spawning && room.cleared;
 
-        static MouseEnemy.MouseVariant ChooseMouseVariant(int floor, float roll)
-        {
-            float chance = floor <= 0 ? 0f : floor == 1 ? 0.2f : 1f / 3f;
-            if (roll < chance) return MouseEnemy.MouseVariant.Jumping;
-            if (roll < chance * 2f) return MouseEnemy.MouseVariant.Tanky;
-            if (roll < chance * 3f || floor >= 2) return MouseEnemy.MouseVariant.Speedy;
-            return MouseEnemy.MouseVariant.Normal;
-        }
-
         bool SpawnMouse(Room room, Vector3 hide, bool boss)
         {
-            MouseEnemy mouse;
-            GameObject root;
-            MouseEnemy prefab = null;
-            MouseEnemy.MouseVariant variant = !boss && levelIndex > 0
-                ? ChooseMouseVariant(levelIndex, Random.value) : MouseEnemy.MouseVariant.Normal;
-            if (!boss && mousePrefabs != null && mousePrefabs.Length > 0)
+            EnemyPreset preset = boss ? enemySpawnPool.boss : enemySpawnPool.Choose(levelIndex, Random.value);
+            return SpawnConfiguredMouse(room, hide, boss, preset, null, null);
+        }
+
+        bool SpawnConfiguredMouse(Room room, Vector3 hide, bool boss, EnemyPreset preset, Vector3? spawnPosition, MouseEnemy parent)
+        {
+            if (preset == null)
             {
-                prefab = mousePrefabs[Random.Range(0, mousePrefabs.Length)];
-                if (prefab == null)
-                {
-                    Debug.LogError("Mouse prefab list contains an empty entry.", this);
-                    return false;
-                }
+                Debug.LogError("No hay enemigos con peso positivo para el piso " + (levelIndex + 1) + ".", this);
+                return false;
             }
-            if (variant != MouseEnemy.MouseVariant.Normal)
+
+            GameObject root;
+            if (preset.prefab != null) root = Instantiate(preset.prefab);
+            else
             {
-                GameObject model = variant == MouseEnemy.MouseVariant.Jumping ? jumpingMouseModel :
-                    variant == MouseEnemy.MouseVariant.Tanky ? tankyMouseModel : speedyMouseModel;
-                if (model == null)
-                {
-                    Debug.LogError("The " + variant + " mouse model is not configured.", this);
-                    return false;
-                }
-                root = Instantiate(model);
-                var controller = root.GetComponent<CharacterController>();
+                root = new GameObject(boss ? "Boss Mouse" : preset.name);
+                Visual(root.transform, PrimitiveType.Capsule, new Vector3(0f, 0.5f, 0f),
+                    boss ? new Vector3(1.1f, 0.8f, 1.1f) : new Vector3(0.55f, 0.5f, 0.55f),
+                    boss ? new Color(0.7f, 0.2f, 0.2f) : new Color(0.55f, 0.45f, 0.4f));
+            }
+            MouseEnemy mouse = root.GetComponent<MouseEnemy>();
+            if (mouse == null)
+            {
+                CharacterController controller = root.GetComponent<CharacterController>();
                 if (controller == null) controller = root.AddComponent<CharacterController>();
-                CharacterController source = prefab != null ? prefab.GetComponent<CharacterController>() : null;
+                CharacterController source = preset.controllerTemplate != null
+                    ? preset.controllerTemplate.GetComponent<CharacterController>() : null;
                 controller.center = source != null ? source.center : new Vector3(0f, 0.5f, 0f);
                 controller.height = source != null ? source.height : 1f;
                 controller.radius = source != null ? source.radius : 0.35f;
@@ -415,52 +620,34 @@ namespace MouseKeeper
                     controller.stepOffset = source.stepOffset;
                 }
                 mouse = root.AddComponent<MouseEnemy>();
-                if (prefab != null)
+                Animator sourceAnimator = preset.controllerTemplate != null
+                    ? preset.controllerTemplate.GetComponentInChildren<Animator>() : null;
+                if (sourceAnimator != null)
                 {
-                    mouse.movementSpeed = prefab.movementSpeed;
-                    mouse.attackInterval = prefab.attackInterval;
-                    mouse.attackDamage = prefab.attackDamage;
-                    mouse.sightRange = prefab.sightRange;
-                    mouse.maxHealth = prefab.maxHealth;
-                    Animator sourceAnimator = prefab.GetComponentInChildren<Animator>();
                     Animator modelAnimator = root.GetComponentInChildren<Animator>();
-                    if (sourceAnimator != null)
-                    {
-                        if (modelAnimator == null) modelAnimator = root.AddComponent<Animator>();
-                        modelAnimator.runtimeAnimatorController = sourceAnimator.runtimeAnimatorController;
-                    }
+                    if (modelAnimator == null) modelAnimator = root.AddComponent<Animator>();
+                    modelAnimator.runtimeAnimatorController = sourceAnimator.runtimeAnimatorController;
                 }
-                mouse.ConfigureVariant(variant);
             }
-            else if (prefab != null)
-            {
-                mouse = Instantiate(prefab);
-                root = mouse.gameObject;
-            }
-            else
-            {
-                root = new GameObject(boss ? "Boss Mouse" : "Mouse");
-                var controller = root.AddComponent<CharacterController>();
-                controller.center = new Vector3(0f, 0.5f, 0f);
-                controller.height = 1f;
-                controller.radius = 0.35f;
-                Visual(root.transform, PrimitiveType.Capsule, new Vector3(0f, 0.5f, 0f),
-                    boss ? new Vector3(1.1f, 0.8f, 1.1f) : new Vector3(0.55f, 0.5f, 0.55f),
-                    boss ? new Color(0.7f, 0.2f, 0.2f) : new Color(0.55f, 0.45f, 0.4f));
-                mouse = root.AddComponent<MouseEnemy>();
-            }
-            root.transform.position = ChooseSpawnPoint(room);
+            preset.ApplyTo(mouse);
+            if (parent != null) root.transform.localScale = parent.transform.localScale * 0.67f;
+            root.transform.position = spawnPosition ?? ChooseSpawnPoint(room);
             root.transform.SetParent(room.root.transform);
             Physics.SyncTransforms();
             CharacterController mouseController = root.GetComponent<CharacterController>();
             float bottom = mouseController.bounds.min.y;
             root.transform.position += Vector3.up * (room.floor.bounds.max.y + 0.02f - bottom);
-            if (boss) { mouse.maxHealth = 150f; mouse.attackDamage = 12f; mouse.movementSpeed = 3f; }
             float levelMultiplier = Mathf.Pow(1.05f, levelIndex);
             mouse.maxHealth *= levelMultiplier;
             mouse.attackDamage *= levelMultiplier;
             mouse.attackInterval /= levelMultiplier;
             mouse.Initialize(this, player, hide, Mathf.Max(1, room.depth));
+            if (parent != null)
+            {
+                mouse.InitializeOffspring(parent);
+                Physics.SyncTransforms();
+                root.transform.position += Vector3.up * (room.floor.bounds.max.y + 0.02f - mouseController.bounds.min.y);
+            }
             if (boss) room.boss = mouse;
             return true;
         }

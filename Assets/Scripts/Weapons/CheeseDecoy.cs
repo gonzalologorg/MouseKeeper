@@ -6,6 +6,13 @@ namespace MouseKeeper
     {
         float health = 50f;
         public bool Available => health > 0f;
+
+        void Awake()
+        {
+            foreach (Collider collider in GetComponentsInChildren<Collider>(true))
+                collider.enabled = false;
+        }
+
         public void TakeDamage(float amount)
         {
             if (!Available || amount <= 0f) return;

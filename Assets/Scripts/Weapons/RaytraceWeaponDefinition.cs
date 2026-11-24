@@ -8,6 +8,8 @@ namespace MouseKeeper
         [Min(1)] public int bulletAmount = 1;
         public bool automatic = true;
         [Min(0f)] public float spreadAngle = 12f;
+        [Tooltip("Optional particle effect emitted for each shot.")]
+        public GameObject projectileEffect;
 
         public override bool HoldPrimaryAttack => automatic;
 

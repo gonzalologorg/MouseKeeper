@@ -6,6 +6,18 @@ modular wall, window, pillar, arch and door models configured in
 `Assets/Resources/RoomArchitecture.asset`; their floors and some gameplay
 objects use primitives with `Assets/Resources/PrimitiveMaterial.mat`.
 
+Planning offers five unique specialty badges. Drag one onto a squad member, or
+select the member and click the badge; each assigned badge costs 10% of the
+contract reward, while recovered cash is settled separately. DPS gains 20%
+weapon damage and 15% reload speed. The medic spends $1 to restore 2 health to
+a teammate below 60% health in a cleared room, gaining one karma per treatment.
+The tank gains 30% health and moves in front of allies in combat. Once per floor,
+the locksmith evacuates the squad through the entry door when someone is at or
+below 25% health; the abandoned room resets for a future attempt. Once per
+floor, the bard responds to the same critical threshold by healing the squad
+for 30% maximum health and granting 25% attack and movement speed until the room
+is cleared or abandoned.
+
 Right-click a point to move the three agents into a small formation around it.
 They choose targets, attack, reload, and collect affordable
 pickups autonomously. With a melee weapon selected, an agent closes in and
@@ -15,7 +27,20 @@ closed doors to unvisited rooms pulse white; right-click one to enter.
 Doors between visited cleared rooms remain open. Right-click a previously
 visited cleared room in the world or on the minimap to travel through
 connected cleared rooms. Each expedition has three floors, with five to eight
-rooms randomly generated on each floor.
+rooms arranged around a continuous central hallway on each floor. The hallway
+usually turns in an L, with a straight layout as a fallback. Several rooms open
+directly onto different points along it; hallway segments have no doors between
+them, do not contain combat, and do not count toward room-cleaning progress. A
+movement order can cross connected hallway segments without pausing at their
+boundaries or detouring through the center of every segment; the camera follows the living squad in the hallway and frames the
+room when they enter one. The boss
+room stays hidden and inaccessible until at least half the rooms are cleared.
+
+An animated hexagonal background fills the space outside the floor. Its palette
+changes on each floor, its motion accelerates as the squad loses health, and it
+briefly flashes red when an agent takes damage. A diagonal gradient shifts hue
+and brightness slowly, while a soft ground-edge shadow separates the floor from
+the animated background.
 Right-click a weapon in the current room to order an available agent to collect
 it, even if it is not an upgrade. Right-click it again before collection to
 cycle through living agents who can afford it. The weapon is reserved for the
@@ -32,8 +57,7 @@ as well as the percentage of floors completed in the expedition.
 Use **1**, **2**, **3** or the bottom-right buttons to select a formation:
 concentrate on one shared target, keep distance while firing, or attack each
 agent's nearest enemy. The nearest-enemy formation is the default. Right-clicking
-a rat switches to shared focus on that rat; hiding temporarily redirects the
-squad to one visible target until it returns. Fleeing, rescues and explicit
+a rat switches to shared focus on that rat. Fleeing, rescues and explicit
 movement or pickup orders retain priority over formation movement.
 
 The HUD shows each agent's passive items as icons. Each passive definition can
@@ -189,7 +213,7 @@ one, provided they can afford it. To prevent endless swaps, an agent does not
 automatically pick up the same individual weapon twice in an expedition.
 Fallen agents do not gain karma from pickups while incapacitated.
 If at least two living agents are at or below 40% health and each was attacked
-by a nearby, non-fleeing mouse within the last two seconds, the available agent
+by a nearby mouse within the last two seconds, the available agent
 with the most teamwork approaches the most injured of them and pushes them
 1.5 units away from their attacker. Rescuers wait five seconds before trying
 again; movement and weapon pickup orders take priority.
@@ -221,27 +245,49 @@ and passive items show their name when approached. Pickups float and rotate, and
 pickups and vents have a softly pulsing light.
 Surviving agents' health, money, weapons, and passive items carry between floors. On clearing a combat room, the living agent with the lowest health percentage
 recovers 5% of their maximum health; peaceful rooms do not trigger this healing.
-Each floor adds one
-enemy per combat room (including the boss room), before room-size scaling, and multiplies enemy health,
-damage, and attack speed by 1.1, in addition to room-depth scaling. After the
-whole squad dies, the expedition is settled and planning resumes.
-Relative to the configured default room area, rooms at or below 80% of that
-area spawn 60% of the usual enemies, rooms at or above 120% spawn 200%, and
-other rooms spawn 100%. Counts are rounded to the nearest integer, with at least
-one enemy for a nonzero wave. Boss rooms retain exactly one boss; additional
-enemies can include rare variants. On floor two, each non-boss spawn has a 20%
-chance for each of the jumping, tanky and speedy rats. Three 35% chances would
-exceed 100%, so on floor three each variant has an equal one-third chance.
+Enemy counts scale with room area, squad strength, floor and difficulty. The
+calculated wave is tripled and then increased by 25%, rounded to the nearest
+whole enemy, with four to 53 enemies in a nonzero wave. Rats immediately pursue
+the nearest living agent, while retaining their special behaviors. Enemy
+health and attack damage are 40% of their previous values, including the boss
+and rare variants; floor and room-depth scaling still apply. After the whole
+squad dies, the expedition is settled and planning resumes. A boss room starts
+with the boss alone, then spawns one rat every two seconds while the boss is
+alive, up to five living rats in addition to the boss. Mushroom offspring also
+respect that limit. Once the boss is defeated, no more rats spawn, and the room
+is cleared after the remaining rats are defeated. Additional enemies can include
+rare variants, according to the configured pool weights.
 Jumping rats have 50% more health and damage and
 leap every second, alternating between living agents when possible.
 They aim at the agent's position when the leap starts, allowing the agent to
 dodge. Tanky rats have double health, half speed, and 20% less attack damage
 than ordinary rats. Speedy rats have twice the speed and half the health.
-The usual floor and room-depth scaling still applies. Only normal rats flee
-and recover after being hit; all special variants continue fighting.
+The explosive rat has the same base health as a normal rat and explodes when
+defeated, dealing 15 damage within a radius of 3 by default. These values can
+be adjusted in its preset. Rats continue fighting after taking damage.
+The poison rat leaves a cloud that deals 10 damage per second for five seconds
+within a default radius of 3. The mushroom rat starts with 80% of a normal rat's
+base health and splits into two on death; each generation has 67% of its
+parent's size and maximum health. After three splits the eight final offspring
+do not split again, and the room remains in combat until they are defeated.
+Each generation gains 20% of the original rat's speed, reaching 160% in the
+third generation; its collision and targeting volumes remain full size.
+Enemy presets are in `Assets/Data/Enemies`. Each preset chooses a prefab or
+visual model, behavior, base health, damage, attack interval, movement speed,
+explosion damage and radius, and poison damage, duration and radius;
+the existing balance, floor and room-depth multipliers apply after these values.
+For a visual-only model, assign a controller template to reuse its controller and
+animator. `DefaultSpawnPool` assigns a boss and a list of enemies with relative
+weights for each floor: for example, weights 20, 20, 20 and 40 give chances of
+20%, 20%, 20% and 40%. A zero weight disables an enemy on that floor; later
+floors reuse the last listed weight. Create additional presets and pools through
+the MouseKeeper/Enemigos asset menu, and assign the desired pool in the
+expedition catalog or as an override on GameRun.
+The Mouse Blaster emits the `Resources/FX/Dart` particle effect along each
+raycast shot. Room architecture uses the `World` layer so dart particles stop
+at walls and other level geometry.
 Right-click a rat to focus the squad's attacks on it until it is defeated or
-the squad leaves the room. Agents can still flee or help endangered teammates;
-if the rat hides temporarily, they attack other visible targets until it returns.
+the squad leaves the room. Agents can still flee or help endangered teammates.
 
 The minimap shows the relative dimensions and positions of visited rooms and
 their connected neighbours. Unvisited rooms
@@ -253,7 +299,8 @@ shows the highest priority: weapon, passive, health, then cash.
 
 Rewards appear only after a combat room is cleared. Each room rolls once:
 if any survivor is below 25% health there is a 13.33% chance of one health vial, otherwise it
-produces cash (one pickup per defeated mouse). No weapons or passives drop from
+produces cash, with a 40% chance per defeated mouse (one dollar per 2.5 mice on
+average). No weapons or passives drop from
 combat rooms. Agents collect rewards autonomously; health
 remains available to injured agents. Cash adds 1 money and health restores 25
 health by default; their amounts are configurable on the vial prefabs.
@@ -274,7 +321,7 @@ against all mice when the player takes damage. Duplicate
 passives stack; only one revival is consumed per lethal hit. Each Room Shock
 still applies its full damage independently, so enough copies can defeat even
 scaled enemies on room entry.
-Mouse maximum health is doubled, including the boss and configured prefabs.
+Mouse maximum health uses the same balance multiplier for the boss and configured prefabs.
 Most weapon damage is reduced by 30% before rounding; gas and shotgun damage
 use their stated values, and passive damage is unchanged.
 Damage is rounded up to a whole number before applying it or invoking damage
@@ -282,7 +329,7 @@ hooks. Damage briefly flashes mice red and displays floating numbers for both mi
 the player. The numbers remain visible through walls.
 
 The `GameRun` component configures base room dimensions, architecture asset,
-mouse count and spawn interval, room prefab, mouse prefabs,
+mouse count and spawn interval, room prefab, enemy spawn pool,
 passive item definitions, and cash and health vial prefabs are configurable in
 the Inspector. Without a vial prefab, a warning is logged and a placeholder cube
 is used. The minimap
@@ -292,8 +339,6 @@ prefab; use the prefab for decorations and obstacles within the smallest room.
 Architecture replacements must match the imported modules: walls and windows
 are about 5.28 units wide, arches 3.9 units wide with a 2.86-unit opening, and
 door leaves 1.3 units wide with their pivot at one edge.
-Add `RoomLayout` to the room prefab and assign hide spots to override the default
-corner hiding places.
 Mouse prefabs need a `MouseEnemy` and its required `CharacterController`; their
 visuals and outfits can differ. The final room uses a larger placeholder mouse.
 An optional mouse Animator uses the float `Speed`, bool `Fleeing`, and triggers
@@ -356,8 +401,5 @@ Runner's EditMode tab.
 
 This is a placeholder prototype, not a finished production build. Mice use
 straight-line movement, and agents use local obstacle avoidance rather than
-full pathfinding; complex room prefabs can obstruct them. After surviving a hit,
-a normal mouse flees and recovers up to half its maximum health over three seconds;
-it then pursues the player and cannot flee again. The placeholder boss uses the
-same behavior. Profile and tune enemy counts in the target build before relying
+full pathfinding; complex room prefabs can obstruct them. Profile and tune enemy counts in the target build before relying
 on hundred-mouse performance.

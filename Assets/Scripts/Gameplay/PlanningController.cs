@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 
 namespace MouseKeeper
 {
-    public sealed class PlanningController : MonoBehaviour
+    public sealed partial class PlanningController : MonoBehaviour
     {
         [SerializeField] VisualTreeAsset layout;
         [SerializeField] PanelSettings panelSettings;
@@ -74,6 +74,7 @@ namespace MouseKeeper
             }
             BuildStatGuide();
             ready = ExpeditionSession.Initialize();
+            if (ready) BuildSpecialtyControls();
 #if UNITY_EDITOR
             debugStatus = new Label("EDITOR: F1 reiniciar campaña | F2 +$20 | F3 todas las armas | F4 +5 mejoras por agente");
             debugStatus.AddToClassList("hint");
@@ -329,6 +330,7 @@ namespace MouseKeeper
                 root.Q<Button>("money-plus-" + i).SetEnabled(reserved + SelectedHireCost(data, catalog) < data.money);
             }
             RefreshAgentDetails(data, catalog);
+            RefreshSpecialtyControls();
         }
 
         static void SetAgentName(Label label, AgentProfile profile, bool canUpgrade, int levelSize = 11)
@@ -520,7 +522,7 @@ namespace MouseKeeper
 
         void Launch(ExpeditionDifficulty difficulty)
         {
-            if (ExpeditionSession.Launch(difficulty, out error)) SceneManager.LoadScene("SampleScene");
+            if (ExpeditionSession.Launch(difficulty, out error)) SceneManager.LoadScene("Start");
             else Refresh();
         }
     }

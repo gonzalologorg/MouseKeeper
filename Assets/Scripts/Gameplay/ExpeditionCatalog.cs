@@ -8,5 +8,6 @@ namespace MouseKeeper
         public AgentDefinition[] agents;
         public WeaponDefinition[] weapons;
         public WeaponDefinition basicWeapon;
+        public EnemySpawnPool enemySpawnPool;
     }
 }

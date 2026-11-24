@@ -1,0 +1,51 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 20288b6d2df546739093e30a12bd0401, type: 3}
+  m_Name: DefaultSpawnPool
+  m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.EnemySpawnPool
+  boss: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900006, type: 2}
+  enemies:
+  - enemy: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900003, type: 2}
+    floorWeights:
+    - 5
+    - 15
+    - 20
+  - enemy: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900004, type: 2}
+    floorWeights:
+    - 5
+    - 15
+    - 25
+  - enemy: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900005, type: 2}
+    floorWeights:
+    - 5
+    - 15
+    - 35
+  - enemy: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900002, type: 2}
+    floorWeights:
+    - 100
+    - 70
+    - 50
+  - enemy: {fileID: 11400000, guid: 27efe414517d7b146958d363d37c51ee, type: 2}
+    floorWeights:
+    - 0
+    - 10
+    - 20
+  - enemy: {fileID: 11400000, guid: f5812700912a4cb498e4bd3917b2224b, type: 2}
+    floorWeights:
+    - 4
+    - 8
+    - 16
+  - enemy: {fileID: 11400000, guid: 3d3b28517d8a06c4196e2cb401274346, type: 2}
+    floorWeights:
+    - 4
+    - 8
+    - 16

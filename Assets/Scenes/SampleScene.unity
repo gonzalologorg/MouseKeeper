@@ -413,11 +413,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.GameRun
   roomPrefab: {fileID: 0}
-  mousePrefabs:
-  - {fileID: 2114918390258977013, guid: 446a9229267fb57479a42bfb310f3df3, type: 3}
-  jumpingMouseModel: {fileID: 919132149155446097, guid: 9d14c14315184c14fa075cf2a92ae7e3, type: 3}
-  tankyMouseModel: {fileID: 919132149155446097, guid: 474011186e2aa82488d990261648a83f, type: 3}
-  speedyMouseModel: {fileID: 919132149155446097, guid: 19b3718ceea95bb4b826f714848aa7f9, type: 3}
+  enemySpawnPool: {fileID: 0}
   weapons:
   - {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}
   - {fileID: 11400000, guid: b7089bb5e46ebb3439d98a99ef4394e9, type: 2}

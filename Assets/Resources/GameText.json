@@ -1,5 +1,9 @@
 {
   "entries": [
+    {"key":"Médico","english":"Medic"},
+    {"key":"Tanque","english":"Tank"},
+    {"key":"Cerrajero","english":"Locksmith"},
+    {"key":"Bardo","english":"Bard"},
     {"key":"Mejora disponible","english":"Upgrade available"},
     {"key":"Ratas eliminadas: {0} · Dinero recogido: ${1}","english":"Rats eliminated: {0} · Money collected: ${1}"},
     {"key":"Fácil · 0.5x","english":"Easy · 0.5x"},

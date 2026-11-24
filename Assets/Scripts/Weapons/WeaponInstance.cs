@@ -20,10 +20,10 @@ namespace MouseKeeper
             Configure(attackSpeed, agility);
         }
 
-        public void Configure(float speed, int agility)
+        public void Configure(float speed, int agility, float reloadMultiplier = 1f)
         {
             attackSpeed = Mathf.Max(0.1f, speed);
-            reloadSpeed = Mathf.Lerp(0.75f, 1.5f, (Mathf.Clamp(agility, 1, 10) - 1) / 9f);
+            reloadSpeed = Mathf.Lerp(0.75f, 1.5f, (Mathf.Clamp(agility, 1, 10) - 1) / 9f) * reloadMultiplier;
         }
 
         public bool TrySpend(float cost, float interval)

@@ -6,10 +6,8 @@ namespace MouseKeeper
     [RequireComponent(typeof(CharacterController))]
     public sealed class MouseEnemy : MonoBehaviour
     {
-        public enum MouseVariant { Normal, Jumping, Tanky, Speedy }
+        public enum MouseVariant { Normal, Jumping, Tanky, Speedy, Explosive, Poison, Mushroom }
 
-        const float RecoveryDuration = 3f;
-        const float RecoveryFraction = 0.5f;
         const float JumpInterval = 1f;
         const float JumpDuration = 0.65f;
         const float JumpDistance = 6f;
@@ -25,15 +23,15 @@ namespace MouseKeeper
         public float attackDamage = 8f;
         public float sightRange = 7f;
         public float maxHealth = 40f;
+        public float explosionDamage = 15f;
+        public float explosionRadius = 3f;
+        public float poisonDamagePerSecond = 10f;
+        public float poisonDuration = 5f;
+        public float poisonRadius = 3f;
+        public EnemyPreset Preset { get; set; }
+        public int SplitGeneration { get; private set; }
         float health;
         float attackCooldown;
-        float decisionTimer;
-        float recoveryRemaining;
-        Vector3 wanderTarget;
-        Vector3 hideTarget;
-        bool fleeing;
-        bool hidden;
-        bool recovered;
         bool defeated;
         MouseVariant variant;
         float jumpCooldown;
@@ -50,37 +48,51 @@ namespace MouseKeeper
         CheeseDecoy jumpCheese;
         GameRun run;
         CharacterController controller;
+        BoxCollider selectionCollider;
         CharacterController targetController;
         Animator animator;
         HitFlash hitFlash;
-        public bool IsTargetable => !defeated && !hidden;
+        public bool IsTargetable => !defeated;
         public bool IsDefeated => defeated;
         public MouseVariant Variant => variant;
 
-        public void ConfigureVariant(MouseVariant value)
+        public void SetBehavior(MouseVariant value) => variant = value;
+
+        public static bool IsStandingOnAgent(Bounds mouse, Bounds agent)
         {
-            variant = value;
-            if (value == MouseVariant.Jumping)
+            float verticalGap = mouse.min.y - agent.max.y;
+            if (verticalGap < -0.2f || verticalGap > 0.15f) return false;
+            float dx = mouse.center.x - agent.center.x;
+            float dz = mouse.center.z - agent.center.z;
+            float mouseRadius = Mathf.Min(mouse.extents.x, mouse.extents.z);
+            float agentRadius = Mathf.Min(agent.extents.x, agent.extents.z);
+            float contactRadius = mouseRadius + agentRadius;
+            return dx * dx + dz * dz < contactRadius * contactRadius;
+        }
+
+        public void InitializeOffspring(MouseEnemy parent)
+        {
+            SplitGeneration = parent.SplitGeneration + 1;
+            maxHealth = parent.maxHealth * 0.67f;
+            health = maxHealth;
+            movementSpeed = parent.movementSpeed * (1f + 0.2f * SplitGeneration) /
+                (1f + 0.2f * parent.SplitGeneration);
+            // The model shrinks, but the collision and targeting volumes keep their world size.
+            CharacterController childController = GetComponent<CharacterController>();
+            CharacterController parentController = parent.GetComponent<CharacterController>();
+            childController.center = parentController.center / 0.67f;
+            childController.height = parentController.height / 0.67f;
+            childController.radius = parentController.radius / 0.67f;
+            if (selectionCollider != null && parent.selectionCollider != null)
             {
-                maxHealth *= 1.5f;
-                attackDamage *= 1.5f;
-            }
-            else if (value == MouseVariant.Tanky)
-            {
-                maxHealth *= 2f;
-                movementSpeed *= 0.5f;
-                attackDamage *= 0.8f;
-            }
-            else if (value == MouseVariant.Speedy)
-            {
-                maxHealth *= 0.5f;
-                movementSpeed *= 2f;
+                selectionCollider.center = parent.selectionCollider.center / 0.67f;
+                selectionCollider.size = parent.selectionCollider.size / 0.67f;
             }
         }
 
         public bool RecentlyAttacked(PlayerController agent)
         {
-            return IsTargetable && !fleeing && agent != null && !agent.Dead &&
+            return IsTargetable && agent != null && !agent.Dead &&
                 lastAttackedAgent == agent && Time.time - lastAttackAt <= 2f &&
                 (transform.position - agent.transform.position).sqrMagnitude <= 9f;
         }
@@ -96,12 +108,10 @@ namespace MouseKeeper
             if (hitFlash == null) hitFlash = gameObject.AddComponent<HitFlash>();
             AddSelectionCollider();
             float depth = Mathf.Clamp(level - 1, 0, 4);
-            maxHealth *= 1.5f * (1f + 0.08f * depth);
-            attackDamage *= 1f + 0.05f * depth;
+            maxHealth *= 0.4f * 1.5f * (1f + 0.08f * depth);
+            attackDamage *= 0.4f * (1f + 0.05f * depth);
             health = maxHealth;
-            hideTarget = hideSpot;
-            jumpCooldown = JumpInterval;
-            PickWanderTarget();
+            jumpCooldown = 0f;
         }
 
         void AddSelectionCollider()
@@ -124,6 +134,7 @@ namespace MouseKeeper
                         }
             }
             BoxCollider selection = gameObject.AddComponent<BoxCollider>();
+            selectionCollider = selection;
             selection.isTrigger = true;
             selection.center = localBounds.center;
             selection.size = localBounds.size;
@@ -132,6 +143,12 @@ namespace MouseKeeper
         void Update()
         {
             if (defeated) return;
+            PlayerController supportingAgent = run.AgentSupportingMouse(controller);
+            if (supportingAgent != null)
+            {
+                TakeDamage(health, supportingAgent);
+                return;
+            }
             if (run.Finished || run.IsTransitioning)
             {
                 UpdateAnimation(0f, false);
@@ -183,41 +200,11 @@ namespace MouseKeeper
             }
             float dt = Time.deltaTime;
             attackCooldown -= dt;
-            if (fleeing)
-            {
-                float recoveryTime = Mathf.Min(dt, recoveryRemaining);
-                health = Mathf.Min(maxHealth, health + maxHealth * RecoveryFraction * recoveryTime / RecoveryDuration);
-                recoveryRemaining -= recoveryTime;
-                if (recoveryRemaining <= 0f)
-                {
-                    fleeing = false;
-                    hidden = false;
-                    recovered = true;
-                }
-            }
             Vector3 toPlayer = player.transform.position - transform.position;
             toPlayer.y = 0f;
             float distance = toPlayer.magnitude;
-            if (hidden)
+            Vector3 target = player.transform.position;
             {
-                UpdateAnimation(0f, true);
-                return;
-            }
-
-            Vector3 target;
-            if (fleeing)
-            {
-                target = hideTarget;
-                if (Vector3.Distance(transform.position, hideTarget) < 0.8f)
-                {
-                    hidden = true;
-                    UpdateAnimation(0f, true);
-                    return;
-                }
-            }
-            else if (recovered || (distance < sightRange && HasSight(toPlayer, distance)))
-            {
-                target = player.transform.position;
                 if (distance < 1.3f && attackCooldown <= 0f)
                 {
                     Bounds mouseBounds = controller.bounds;
@@ -233,13 +220,6 @@ namespace MouseKeeper
                     }
                 }
             }
-            else
-            {
-                decisionTimer -= dt;
-                if (decisionTimer <= 0f || Vector3.Distance(transform.position, wanderTarget) < 0.7f)
-                    PickWanderTarget();
-                target = wanderTarget;
-            }
             Vector3 direction = target - transform.position;
             direction.y = 0f;
             Vector3 previousPosition = transform.position;
@@ -251,7 +231,7 @@ namespace MouseKeeper
             }
             Vector3 displacement = transform.position - previousPosition;
             displacement.y = 0f;
-            UpdateAnimation(dt > 0f ? displacement.magnitude / dt : 0f, fleeing);
+            UpdateAnimation(dt > 0f ? displacement.magnitude / dt : 0f, false);
         }
 
         void UpdateJump(float dt)
@@ -344,25 +324,11 @@ namespace MouseKeeper
             animator.SetBool(FleeingParameter, isFleeing && speed == 0f);
         }
 
-        bool HasSight(Vector3 direction, float distance)
-        {
-            if (distance < 0.01f) return true;
-            if (Physics.Raycast(transform.position + Vector3.up * 0.4f, direction / distance,
-                    out RaycastHit hit, distance, ~0, QueryTriggerInteraction.Ignore))
-                return hit.collider.GetComponentInParent<PlayerController>() != null;
-            return true;
-        }
-
-        void PickWanderTarget()
-        {
-            wanderTarget = run.RandomPointInRoom();
-            decisionTimer = Random.Range(1.5f, 4f);
-        }
-
         public void TakeDamage(float amount, PlayerController attacker, WeaponInstance weapon = null, bool scaleWeaponDamage = true, Vector3? impact = null, Vector3? sourcePosition = null)
         {
             if (defeated || amount <= 0f) return;
-            amount = Mathf.Ceil(amount * (weapon != null && scaleWeaponDamage ? 0.7f : 1f));
+            amount = Mathf.Ceil(amount * (weapon != null && attacker != null ? attacker.WeaponDamageMultiplier : 1f) *
+                (weapon != null && scaleWeaponDamage ? 0.7f : 1f));
             health -= amount;
             Bounds bounds = controller.bounds;
             Vector3 source = sourcePosition ?? (attacker != null ? attacker.transform.position : bounds.center - transform.forward);
@@ -377,6 +343,12 @@ namespace MouseKeeper
             if (killed)
             {
                 attacker.NotifyMouseKill(this);
+                if (variant == MouseVariant.Explosive)
+                    run.ExplodeMouse(this, explosionRadius, explosionDamage);
+                else if (variant == MouseVariant.Poison)
+                    run.SpawnPoisonCloud(transform.position, poisonRadius, poisonDamagePerSecond, poisonDuration);
+                else if (variant == MouseVariant.Mushroom && SplitGeneration < 3)
+                    run.SplitMouse(this);
                 run.MouseDefeated(this);
                 controller.enabled = false;
                 if (animator != null && animator.isActiveAndEnabled && animator.runtimeAnimatorController != null &&
@@ -396,11 +368,6 @@ namespace MouseKeeper
                 return;
             }
 
-            if (variant == MouseVariant.Normal && !defeated && !fleeing && !recovered)
-            {
-                fleeing = true;
-                recoveryRemaining = RecoveryDuration;
-            }
         }
 
         IEnumerator WaitForDeathAnimation()

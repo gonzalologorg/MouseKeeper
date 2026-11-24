@@ -12,6 +12,9 @@ namespace MouseKeeper
             public Image image;
             public Vector2 center;
             public Vector2 size;
+            public bool corridor;
+            public int corridorMask;
+            public readonly Image[] arms = new Image[4];
         }
 
         readonly Dictionary<Vector2Int, RoomDisplay> rooms = new Dictionary<Vector2Int, RoomDisplay>();
@@ -31,6 +34,27 @@ namespace MouseKeeper
             display.center = center;
             display.size = size;
             display.image.color = color;
+        }
+
+        public void SetCorridor(Vector2Int position, Vector2 center, Vector2 size, int mask, Color color)
+        {
+            SetRoom(position, center, size, color);
+            RoomDisplay display = rooms[position];
+            display.corridor = true;
+            display.corridorMask = mask;
+            for (int i = 0; i < 4; i++)
+            {
+                if (display.arms[i] == null)
+                {
+                    var part = new GameObject("Corridor arm", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+                    part.layer = gameObject.layer;
+                    part.transform.SetParent(transform, false);
+                    display.arms[i] = part.GetComponent<Image>();
+                    display.arms[i].raycastTarget = false;
+                }
+                display.arms[i].color = color;
+                display.arms[i].gameObject.SetActive((mask & (1 << i)) != 0);
+            }
         }
 
         public void LayoutRooms()
@@ -53,8 +77,22 @@ namespace MouseKeeper
             {
                 RectTransform rect = room.image.rectTransform;
                 rect.anchorMin = rect.anchorMax = rect.pivot = new Vector2(0.5f, 0.5f);
-                rect.sizeDelta = room.size * (scale * 0.9f);
+                rect.sizeDelta = room.corridor ? Vector2.one * (GameRun.CorridorWidth * scale) : room.size * (scale * 0.9f);
                 rect.anchoredPosition = (room.center - center) * scale;
+                if (!room.corridor) continue;
+                for (int i = 0; i < 4; i++)
+                {
+                    if ((room.corridorMask & (1 << i)) == 0) continue;
+                    bool horizontal = i % 2 == 1;
+                    float sign = i < 2 ? 1f : -1f;
+                    float length = ((horizontal ? room.size.x : room.size.y) - GameRun.CorridorWidth) * 0.5f;
+                    RectTransform arm = room.arms[i].rectTransform;
+                    arm.anchorMin = arm.anchorMax = arm.pivot = new Vector2(0.5f, 0.5f);
+                    arm.sizeDelta = (horizontal ? new Vector2(length, GameRun.CorridorWidth) : new Vector2(GameRun.CorridorWidth, length)) * scale;
+                    float half = GameRun.CorridorWidth * 0.5f;
+                    Vector2 offset = horizontal ? new Vector2(sign * (half + length * 0.5f), 0f) : new Vector2(0f, sign * (half + length * 0.5f));
+                    arm.anchoredPosition = (room.center + offset - center) * scale;
+                }
             }
         }
 
@@ -64,6 +102,8 @@ namespace MouseKeeper
             {
                 room.image.gameObject.SetActive(false);
                 Destroy(room.image.gameObject);
+                foreach (Image arm in room.arms)
+                    if (arm != null) { arm.gameObject.SetActive(false); Destroy(arm.gameObject); }
             }
             rooms.Clear();
         }
@@ -81,14 +121,23 @@ namespace MouseKeeper
             Canvas canvas = GetComponentInParent<Canvas>();
             Camera camera = canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay ? canvas.worldCamera : null;
             foreach (KeyValuePair<Vector2Int, RoomDisplay> pair in rooms)
-                if (RectTransformUtility.RectangleContainsScreenPoint(pair.Value.image.rectTransform, point, camera))
+            {
+                bool hit = RectTransformUtility.RectangleContainsScreenPoint(pair.Value.image.rectTransform, point, camera);
+                if (!hit && pair.Value.corridor)
+                    foreach (Image arm in pair.Value.arms)
+                        if (arm != null && arm.gameObject.activeSelf && RectangleContains(arm.rectTransform, point, camera)) { hit = true; break; }
+                if (hit)
                 {
                     position = pair.Key;
                     return true;
                 }
+            }
             position = default;
             return false;
         }
+
+        static bool RectangleContains(RectTransform rect, Vector2 point, Camera camera) =>
+            RectTransformUtility.RectangleContainsScreenPoint(rect, point, camera);
 
         void OnRectTransformDimensionsChange()
         {

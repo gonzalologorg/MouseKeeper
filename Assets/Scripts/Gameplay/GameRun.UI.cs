@@ -11,17 +11,27 @@ namespace MouseKeeper
         {
             int count = 0;
             foreach (Room room in rooms)
-                if (room.visited && room.cleared && !room.spawning) count++;
+                if (room.kind != RoomKind.Corridor && room.visited && room.cleared && !room.spawning) count++;
             return count;
         }
+
+        int ChamberCount()
+        {
+            int count = 0;
+            foreach (Room room in rooms) if (room.kind != RoomKind.Corridor) count++;
+            return count;
+        }
+
+        bool BossRevealed() => bossRoom != null && ClearedRoomCount() * 2 >= ChamberCount();
 
         string FloorProgress()
         {
             int clearedRooms = ClearedRoomCount();
-            int roomPercent = rooms.Count > 0 ? Mathf.RoundToInt(100f * clearedRooms / rooms.Count) : 0;
+            int chambers = ChamberCount();
+            int roomPercent = chambers > 0 ? Mathf.RoundToInt(100f * clearedRooms / chambers) : 0;
             int floorPercent = Mathf.RoundToInt(100f * ClearedFloors / ExpeditionSession.FloorCount);
             return GameText.Format("Piso {0}/{1} | Limpieza: {2}/{3} ({4}%) | Pisos completos: {5}/{1} ({6}%)",
-                levelIndex + 1, ExpeditionSession.FloorCount, clearedRooms, rooms.Count, roomPercent, ClearedFloors, floorPercent);
+                levelIndex + 1, ExpeditionSession.FloorCount, clearedRooms, chambers, roomPercent, ClearedFloors, floorPercent);
         }
 
         public void EndRun()
@@ -127,7 +137,10 @@ namespace MouseKeeper
                 string weaponText = weapon != null ? GameText.Get(weapon.Definition.displayName) : GameText.Get("Sin arma");
                 string nameColor = ColorUtility.ToHtmlStringRGB(agent.Profile.LevelColor);
                 string name = $"<color=#{nameColor}>{agent.Profile.NameWithLevel(10)}</color>";
-                GUI.Label(new Rect(15f, Screen.height - 85f + i * 20f, 600f, 22f),
+                float y = Screen.height - 85f + i * 20f;
+                Texture2D specialtyIcon = squadIndicators != null ? squadIndicators.SpecialtyIcon(agent.Specialty) : null;
+                if (specialtyIcon != null) GUI.DrawTexture(new Rect(15f, y, 19f, 19f), specialtyIcon);
+                GUI.Label(new Rect(37f, y, 600f, 22f),
                     $"{name}: {(agent.Dead ? GameText.Format("caído (tienda ${0} o siguiente piso)", ShopRevivalPrice) : $"{agent.Health:0}/{agent.MaxHealth:0}")} | ${agent.Money} | Karma {agent.Karma:+0;-0;0} | {weaponText}", agentHudLabel);
                 DrawPassiveIcons(agent, Screen.height - 85f + i * 20f);
             }
@@ -135,10 +148,10 @@ namespace MouseKeeper
             GUI.Label(new Rect(15f, Screen.height - 25f, 650f, 22f), FloorProgress());
             if (currentRoom != null && !currentRoom.cleared)
                 GUI.Label(new Rect(15f, Screen.height - 135f, 250f, 25f), GameText.Format("Plagas restantes: {0}", currentRoom.enemies));
-            if (bossRoom != null && bossRoom.bossDefeated && !FloorCleared() && rooms.Count > 0)
+            if (bossRoom != null && bossRoom.bossDefeated && !FloorCleared() && ChamberCount() > 0)
                 GUI.Label(new Rect(15f, Screen.height - 155f, 600f, 22f),
                     GameText.Format("Salida anticipada: -{0}% del contrato",
-                        (100f * ClearedRoomCount() / rooms.Count / ExpeditionSession.FloorCount).ToString("0.#")));
+                        (100f * ClearedRoomCount() / ChamberCount() / ExpeditionSession.FloorCount).ToString("0.#")));
             foreach (PlayerController agent in agents)
             {
                 if (agent.Dead) continue;

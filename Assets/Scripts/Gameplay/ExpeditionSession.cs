@@ -5,6 +5,7 @@ using UnityEngine;
 namespace MouseKeeper
 {
     public enum ExpeditionDifficulty { Normal, Easy, Hard, Swarm }
+    public enum Specialty { None, Dps, Medic, Tank, Locksmith, Bard }
 
     [Serializable]
     public sealed class AgentProgress
@@ -28,6 +29,7 @@ namespace MouseKeeper
         public int[] selectedAgents;
         public int[] selectedWeapons;
         public int[] selectedMoney;
+        public Specialty[] specialties;
         public string[] agentKeys;
         public string[] weaponKeys;
         public AgentProgress[] progress;
@@ -172,10 +174,11 @@ namespace MouseKeeper
                 catch (ArgumentException error) { Debug.LogError("No se pudo leer la campaña: " + error.Message); return false; }
                 migrated = data != null && data.progressionVersion < 2;
                 if (data != null && data.selectedMoney == null) data.selectedMoney = new int[SquadSize];
+                if (data != null && data.specialties == null) { data.specialties = new Specialty[SquadSize]; migrated = true; }
                 if (data == null || data.inventory == null || data.unavailable == null ||
                     data.selectedAgents == null || data.selectedAgents.Length != SquadSize ||
                     data.selectedWeapons == null || data.selectedWeapons.Length != SquadSize ||
-                    data.selectedMoney.Length != SquadSize ||
+                    data.selectedMoney.Length != SquadSize || data.specialties.Length != SquadSize ||
                     !ReconcileCatalog(data, catalog))
                 {
                     Debug.LogError("La campaña guardada es incompatible con el catálogo.");
@@ -246,6 +249,7 @@ namespace MouseKeeper
                 selectedAgents = new[] { 0, 1, 2 },
                 selectedWeapons = new[] { basic, basic, basic },
                 selectedMoney = new int[SquadSize],
+                specialties = new Specialty[SquadSize],
                 progress = Array.ConvertAll(source.agents, agent => new AgentProgress()),
                 progressionVersion = 2,
                 agentKeys = Array.ConvertAll(source.agents, agent => agent.name),
@@ -311,6 +315,13 @@ namespace MouseKeeper
 
         public static bool CanLaunch(CampaignData campaign, ExpeditionCatalog source, out string error)
         {
+            if (campaign.specialties == null) campaign.specialties = new Specialty[SquadSize];
+            if (campaign.specialties.Length != SquadSize) { error = "Especialidades inválidas."; return false; }
+            var usedSpecialties = new HashSet<Specialty>();
+            foreach (Specialty specialty in campaign.specialties)
+                if ((int)specialty < 0 || (int)specialty > (int)Specialty.Bard ||
+                    (specialty != Specialty.None && !usedSpecialties.Add(specialty)))
+                { error = "Las especialidades deben ser distintas."; return false; }
             var usedAgents = new HashSet<int>();
             var usedWeapons = new int[source.weapons.Length];
             int basic = Array.IndexOf(source.weapons, source.basicWeapon);
@@ -426,7 +437,10 @@ namespace MouseKeeper
             if (!Active) { Debug.LogError("No hay una expedición activa para liquidar."); return; }
             if (agents == null || agents.Length != SquadSize) { Debug.LogError("Falta el escuadrón para liquidar."); return; }
             float progress = Mathf.Clamp(floorCredit, 0f, FloorCount) / FloorCount;
-            int reward = Mathf.RoundToInt(50f * progress * DifficultyMultiplier(data.difficulty));
+            int specialtyCount = 0;
+            if (data.specialties != null) foreach (Specialty specialty in data.specialties)
+                if (specialty != Specialty.None) specialtyCount++;
+            int reward = Mathf.RoundToInt(50f * progress * DifficultyMultiplier(data.difficulty) * (1f - 0.1f * specialtyCount));
             int collected = 0;
             for (int i = 0; i < SquadSize; i++)
                 if (!agents[i].Dead) collected += agents[i].Money;

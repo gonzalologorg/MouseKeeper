@@ -14,6 +14,10 @@ namespace MouseKeeper
         public float EnergyRecharge { get; private set; }
         public int Money { get; private set; }
         public int Karma { get; private set; }
+        public Specialty Specialty { get; private set; }
+        bool bardBuff;
+        public float WeaponDamageMultiplier => Specialty == Specialty.Dps ? 1.2f : 1f;
+        internal bool EscapeInvulnerable { get; set; }
         public int SelectedWeapon { get; private set; }
         public IReadOnlyList<PassiveItemDefinition> Passives => passives;
         public WeaponInstance[] Weapons { get; } = new WeaponInstance[1];
@@ -29,6 +33,7 @@ namespace MouseKeeper
         GameRun run;
         AgentProfile profile;
         Vector3 destination;
+        readonly Queue<Vector3> corridorWaypoints = new Queue<Vector3>();
         bool hasDestination;
         bool overcomingFear;
         bool fearTriggered;
@@ -62,6 +67,28 @@ namespace MouseKeeper
         }
 
         public void SetDialogue(AgentDialogue value) => dialogue = value;
+
+        public void SetSpecialty(Specialty specialty)
+        {
+            Specialty = specialty;
+            if (specialty == Specialty.Tank) { MaxHealth *= 1.3f; Health *= 1.3f; }
+            RefreshWeaponSpeed();
+        }
+
+        internal void SetBardBuff(bool enabled)
+        {
+            if (bardBuff == enabled) return;
+            bardBuff = enabled;
+            RefreshWeaponSpeed();
+        }
+
+        void RefreshWeaponSpeed()
+        {
+            if (profile == null) return;
+            foreach (WeaponInstance weapon in Weapons)
+                if (weapon != null) weapon.Configure(profile.attackSpeed * (bardBuff ? 1.25f : 1f),
+                    profile.agility, Specialty == Specialty.Dps ? 1.15f : 1f);
+        }
 
         public static float AimErrorDegrees(int accuracy, float distance)
         {
@@ -175,6 +202,18 @@ namespace MouseKeeper
                 }
                 if (!hasDestination)
                 {
+                    if (run.TryProtectMedicPosition(this, out Vector3 protectionPosition))
+                    {
+                        Vector3 offset = protectionPosition - transform.position;
+                        offset.y = 0f;
+                        if (offset.sqrMagnitude > 0.8f * 0.8f) MoveTowards(protectionPosition, dt);
+                        return;
+                    }
+                    if (Specialty == Specialty.Tank && run.TryTankPosition(this, target, out Vector3 tankPosition))
+                    {
+                        MoveTowards(tankPosition, dt);
+                        return;
+                    }
                     if (!run.HasFocusTarget && TryPushLootHoarder(target, dt)) return;
                     if (current != null)
                     {
@@ -340,13 +379,23 @@ namespace MouseKeeper
 
         public void SetDestination(Vector3 point)
         {
+            corridorWaypoints.Clear();
             destination = point;
             hasDestination = true;
+        }
+
+        public void IssueCorridorPath(IReadOnlyList<Vector3> points)
+        {
+            if (points == null || points.Count == 0) return;
+            IssueMoveOrder(points[0]);
+            if (!hasDestination) return;
+            for (int i = 1; i < points.Count; i++) corridorWaypoints.Enqueue(points[i]);
         }
 
         public void CancelMoveOrder()
         {
             hasDestination = false;
+            corridorWaypoints.Clear();
             overcomingFear = false;
         }
 
@@ -449,7 +498,12 @@ namespace MouseKeeper
         {
             Vector3 delta = destination - transform.position;
             delta.y = 0f;
-            if (delta.sqrMagnitude < 0.18f * 0.18f) { hasDestination = false; return; }
+            if (delta.sqrMagnitude < 0.18f * 0.18f)
+            {
+                if (corridorWaypoints.Count > 0) destination = corridorWaypoints.Dequeue();
+                else hasDestination = false;
+                return;
+            }
             MoveTowards(destination, dt);
         }
 
@@ -471,6 +525,7 @@ namespace MouseKeeper
             if (!traveling)
                 stamina = Mathf.Max(0.35f, stamina - dt * Mathf.Lerp(0.075f, 0.045f, agility));
             float speed = (traveling ? run.SquadTravelSpeed : MovementSpeed * stamina * emergencySpeedMultiplier) *
+                (bardBuff ? 1.25f : 1f) * (EscapeInvulnerable ? 2f : 1f) *
                 (run.IsLastSurvivingAgent(this) ? 1.25f : 1f);
             float step = Mathf.Min(speed * dt, Vector3.Distance(transform.position, point));
             controller.Move(direction * step + Vector3.down * 2f * dt);
@@ -542,7 +597,7 @@ namespace MouseKeeper
             Weapons[slot] = weapon;
             equippedWeapons.Add(weapon);
             SelectedWeapon = slot;
-            weapon.Configure(profile.attackSpeed, profile.agility);
+            RefreshWeaponSpeed();
             weaponVisual.SetWeapon(weapon);
             weapon.Definition.OnPickup(this, weapon);
         }
@@ -572,16 +627,42 @@ namespace MouseKeeper
         public void Fire(float damage, float range, Vector3 direction, WeaponInstance weapon)
         {
             Vector3 origin = transform.position + Vector3.up * 0.65f + AimDirection * 0.6f;
-            if (Physics.Raycast(origin, direction, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
+            bool hitSomething = Physics.Raycast(origin, direction, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore);
+            if (weapon != null && weapon.Definition is RaytraceWeaponDefinition raytrace && raytrace.projectileEffect != null)
+                SpawnDartEffect(raytrace.projectileEffect, origin, direction, hitSomething ? hit.distance : range);
+            if (hitSomething)
             {
                 MouseEnemy enemy = hit.collider.GetComponentInParent<MouseEnemy>();
                 if (enemy != null) enemy.TakeDamage(damage, this, weapon, impact: hit.point, sourcePosition: origin);
             }
         }
 
+        void SpawnDartEffect(GameObject prefab, Vector3 origin, Vector3 direction, float distance)
+        {
+            if (direction.sqrMagnitude < 0.0001f) return;
+            GameObject effect = Instantiate(prefab, origin, Quaternion.LookRotation(direction));
+            foreach (ParticleSystem particles in effect.GetComponentsInChildren<ParticleSystem>(true))
+            {
+                particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                var main = particles.main;
+                main.simulationSpace = ParticleSystemSimulationSpace.World;
+                float speed = main.startSpeed.constantMax;
+                if (speed > 0f) main.startLifetime = Mathf.Max(0.001f, Mathf.Min(main.startLifetime.constantMax, distance / speed));
+                var collision = particles.collision;
+                collision.enabled = true;
+                collision.type = ParticleSystemCollisionType.World;
+                int world = LayerMask.NameToLayer("World");
+                if (world >= 0) collision.collidesWith = 1 << world;
+                collision.lifetimeLoss = 1f;
+                collision.bounce = 0f;
+                particles.Play();
+            }
+            Destroy(effect, 2f);
+        }
+
         public void TakeDamage(float amount, MouseEnemy attacker = null, Vector3? impact = null, Vector3? sourcePosition = null)
         {
-            if (Dead || amount <= 0f) return;
+            if (Dead || EscapeInvulnerable || amount <= 0f) return;
             amount = Mathf.Ceil(amount);
             Health = Mathf.Max(0f, Health - amount);
             Bounds bounds = controller.bounds;
@@ -638,12 +719,11 @@ namespace MouseKeeper
 
         public void ResetProgression(AgentProfile original)
         {
-            MaxHealth += original.EffectiveHealth - profile.EffectiveHealth;
+            MaxHealth += (original.EffectiveHealth - profile.EffectiveHealth) * (Specialty == Specialty.Tank ? 1.3f : 1f);
             MovementSpeed += original.EffectiveSpeed - profile.EffectiveSpeed;
             profile = original;
             Health = Mathf.Min(Health, MaxHealth);
-            foreach (WeaponInstance weapon in Weapons)
-                if (weapon != null) weapon.Configure(profile.attackSpeed, profile.agility);
+            RefreshWeaponSpeed();
         }
 
         public bool ConsumePassiveAndHeal(PassiveItemDefinition passive, float amount)

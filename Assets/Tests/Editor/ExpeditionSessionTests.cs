@@ -81,6 +81,86 @@ public sealed class ExpeditionSessionTests
         return result;
     }
 
+    [Test]
+    public void SpecialtiesMustBeUniqueAndCostTenPercentOfContractEach()
+    {
+        data.specialties = new[] { Specialty.Dps, Specialty.Medic, Specialty.Medic };
+        Assert.That(ExpeditionSession.CanLaunch(data, catalog, out _), Is.False);
+        data.specialties[2] = Specialty.Tank;
+        Assert.That(ExpeditionSession.Launch(ExpeditionDifficulty.Normal, out _), Is.True);
+        PlayerController[] squad = Squad();
+        squad[0].AddMoney(7);
+        ExpeditionSession.Settle(ExpeditionSession.FloorCount, squad, true);
+        Assert.That(data.lastResultValues[1], Is.EqualTo(35));
+        Assert.That(data.lastResultValues[2], Is.EqualTo(7));
+    }
+
+    [Test]
+    public void TankHasThirtyPercentExtraHealthAndDpsHasDamageBonus()
+    {
+        PlayerController[] squad = Squad();
+        float health = squad[0].MaxHealth;
+        squad[0].SetSpecialty(Specialty.Tank);
+        squad[1].SetSpecialty(Specialty.Dps);
+        Assert.That(squad[0].MaxHealth, Is.EqualTo(health * 1.3f).Within(0.001f));
+        Assert.That(squad[0].Health, Is.EqualTo(health * 1.3f).Within(0.001f));
+        Assert.That(squad[1].WeaponDamageMultiplier, Is.EqualTo(1.2f).Within(0.001f));
+    }
+
+    [Test]
+    public void SquadPositionsItselfBetweenMedicAndNearbyThreat()
+    {
+        PlayerController[] squad = Squad();
+        squad[0].SetSpecialty(Specialty.Medic);
+        squad[1].SetSpecialty(Specialty.Tank);
+        squad[0].transform.position = Vector3.zero;
+        squad[1].transform.position = Vector3.left * 2f;
+        squad[2].transform.position = Vector3.left * 3f;
+        var agents = (List<PlayerController>)typeof(GameRun).GetField("agents", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        agents.AddRange(squad);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        object room = Activator.CreateInstance(roomType, true);
+        var roomRoot = new GameObject("Room");
+        roomRoot.transform.SetParent(roots[0].transform);
+        roomType.GetField("root").SetValue(room, roomRoot);
+        roomType.GetField("width").SetValue(room, 20f);
+        roomType.GetField("depthSize").SetValue(room, 20f);
+        typeof(GameRun).GetField("currentRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, room);
+        var enemy = new GameObject("Threat");
+        enemy.transform.SetParent(roomRoot.transform);
+        enemy.transform.position = Vector3.right * 4f;
+        enemy.AddComponent<MouseEnemy>();
+        Assert.That(run.TryProtectMedicPosition(squad[1], out Vector3 tankPosition), Is.True);
+        Assert.That(run.TryProtectMedicPosition(squad[2], out Vector3 allyPosition), Is.True);
+        Assert.That(tankPosition.x, Is.GreaterThan(0f).And.LessThan(4f));
+        Assert.That(allyPosition.x, Is.GreaterThan(0f).And.LessThan(4f));
+        Assert.That(run.TryProtectMedicPosition(squad[0], out _), Is.False);
+        enemy.transform.position = Vector3.right * 9f;
+        Assert.That(run.TryProtectMedicPosition(squad[1], out _), Is.False);
+    }
+
+    [Test]
+    public void MedicTreatsInjuredTeammateOnlyDuringExploration()
+    {
+        PlayerController[] squad = Squad();
+        squad[0].SetSpecialty(Specialty.Medic);
+        squad[0].AddMoney(2);
+        typeof(PlayerController).GetProperty("Health").SetValue(squad[1], 10f);
+        var agents = (List<PlayerController>)typeof(GameRun).GetField("agents", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        agents.AddRange(squad);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        object room = Activator.CreateInstance(roomType, true);
+        typeof(GameRun).GetField("currentRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, room);
+        MethodInfo update = typeof(GameRun).GetMethod("UpdateSpecialties", BindingFlags.Instance | BindingFlags.NonPublic);
+        update.Invoke(run, null);
+        Assert.That(squad[1].Health, Is.EqualTo(10f));
+        roomType.GetField("cleared").SetValue(room, true);
+        update.Invoke(run, null);
+        Assert.That(squad[1].Health, Is.EqualTo(12f));
+        Assert.That(squad[0].Money, Is.EqualTo(1));
+        Assert.That(squad[0].Karma, Is.EqualTo(1));
+    }
+
     [TestCase(ExpeditionDifficulty.Easy, 25, 0)]
     [TestCase(ExpeditionDifficulty.Normal, 50, 0)]
     [TestCase(ExpeditionDifficulty.Hard, 75, 1)]
@@ -440,25 +520,75 @@ public sealed class ExpeditionSessionTests
             for (int floor = 0; floor < 3; floor++)
             {
                 var counts = new HashSet<int>();
+                bool foundBend = false;
                 levelIndex.SetValue(run, floor);
                 for (int seed = 0; seed < 100; seed++)
                 {
                     rooms.Clear();
                     UnityEngine.Random.InitState(seed);
                     generate.Invoke(run, null);
-                    Assert.That(rooms.Count, Is.InRange(5, 8));
-                    counts.Add(rooms.Count);
                     object boss = bossRoom.GetValue(run);
                     Assert.That(boss, Is.Not.SameAs(rooms[0]));
                     var positions = new HashSet<Vector2Int>();
-                    int shops = 0, treasures = 0;
+                    int shops = 0, treasures = 0, corridors = 0, chambers = 0, corners = 0, corridorRooms = 0;
                     foreach (object room in rooms)
                     {
-                        Assert.That(positions.Add((Vector2Int)roomType.GetField("position").GetValue(room)), Is.True);
+                        Vector2Int roomPosition = (Vector2Int)roomType.GetField("position").GetValue(room);
+                        Assert.That(roomPosition.x, Is.GreaterThanOrEqualTo(0), "The entrance side must remain outside the map.");
+                        Assert.That(positions.Add(roomPosition), Is.True);
                         string kind = roomType.GetField("kind").GetValue(room).ToString();
+                        if (kind == "Corridor")
+                        {
+                            corridors++;
+                            var neighbours = (Array)roomType.GetField("neighbours").GetValue(room);
+                            int links = 0, corridorMask = 0, attachedRooms = 0;
+                            for (int i = 0; i < 4; i++)
+                            {
+                                object neighbour = neighbours.GetValue(i);
+                                if (neighbour == null) continue;
+                                links++;
+                                if (roomType.GetField("kind").GetValue(neighbour).ToString() == "Corridor") corridorMask |= 1 << i;
+                                else attachedRooms++;
+                            }
+                            Assert.That(links, Is.InRange(1, 4));
+                            if (attachedRooms > 0) corridorRooms++;
+                            if (corridorMask != 0 && corridorMask != 1 && corridorMask != 2 && corridorMask != 4 && corridorMask != 8 &&
+                                corridorMask != 5 && corridorMask != 10) corners++;
+                        }
+                        else
+                        {
+                            chambers++;
+                            var neighbours = (Array)roomType.GetField("neighbours").GetValue(room);
+                            int links = 0;
+                            foreach (object neighbour in neighbours)
+                            {
+                                if (neighbour == null) continue;
+                                links++;
+                                Assert.That(roomType.GetField("kind").GetValue(neighbour).ToString(), Is.EqualTo("Corridor"));
+                            }
+                            Assert.That(links, Is.EqualTo(1), "Each room opens directly onto the central hallway.");
+                        }
                         if (kind == "Shop") shops++;
                         if (kind == "Treasure") treasures++;
                     }
+                    Assert.That(chambers, Is.InRange(5, 8));
+                    counts.Add(chambers);
+                    Assert.That(corridors, Is.GreaterThanOrEqualTo(2));
+                    Assert.That(corridorRooms, Is.GreaterThanOrEqualTo(4), "Rooms must branch off several hallway segments.");
+                    foundBend |= corners > 0;
+                    Assert.That(((Array)roomType.GetField("neighbours").GetValue(rooms[0])).GetValue(3), Is.Null);
+                    object firstCorridor = ((Array)roomType.GetField("neighbours").GetValue(rooms[0])).GetValue(1);
+                    var hallway = new HashSet<object> { firstCorridor };
+                    var hallwayQueue = new Queue<object>();
+                    hallwayQueue.Enqueue(firstCorridor);
+                    while (hallwayQueue.Count > 0)
+                    {
+                        object corridor = hallwayQueue.Dequeue();
+                        foreach (object neighbour in (Array)roomType.GetField("neighbours").GetValue(corridor))
+                            if (neighbour != null && roomType.GetField("kind").GetValue(neighbour).ToString() == "Corridor" && hallway.Add(neighbour))
+                                hallwayQueue.Enqueue(neighbour);
+                    }
+                    Assert.That(hallway.Count, Is.EqualTo(corridors), "The hallway must remain connected without passing through rooms.");
                     Assert.That(shops, Is.EqualTo(floor == 1 ? 1 : 0));
                     Assert.That(treasures, Is.EqualTo(floor == 1 ? 0 : 1));
                     var visited = new HashSet<object> { rooms[0] };
@@ -480,12 +610,170 @@ public sealed class ExpeditionSessionTests
                     }
                 }
                 Assert.That(counts, Is.EquivalentTo(new[] { 5, 6, 7, 8 }));
+                Assert.That(foundBend, Is.True, "Some hallways should turn.");
             }
         }
         finally
         {
             UnityEngine.Random.state = previous;
         }
+    }
+
+    [Test]
+    public void BossIsRevealedOnlyAfterHalfOfTheChambersAreCleared()
+    {
+        var rooms = (IList)typeof(GameRun).GetField("rooms", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        Type kindType = typeof(GameRun).GetNestedType("RoomKind", BindingFlags.NonPublic);
+        for (int i = 0; i < 6; i++)
+        {
+            object room = Activator.CreateInstance(roomType, true);
+            if (i == 5) roomType.GetField("kind").SetValue(room, Enum.Parse(kindType, "Corridor"));
+            rooms.Add(room);
+        }
+        typeof(GameRun).GetField("bossRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, rooms[4]);
+        MethodInfo revealed = typeof(GameRun).GetMethod("BossRevealed", BindingFlags.Instance | BindingFlags.NonPublic);
+        for (int i = 0; i < 2; i++)
+        {
+            roomType.GetField("visited").SetValue(rooms[i], true);
+            roomType.GetField("cleared").SetValue(rooms[i], true);
+        }
+        roomType.GetField("visited").SetValue(rooms[5], true);
+        roomType.GetField("cleared").SetValue(rooms[5], true);
+        Assert.That(revealed.Invoke(run, null), Is.False);
+        roomType.GetField("visited").SetValue(rooms[2], true);
+        roomType.GetField("cleared").SetValue(rooms[2], true);
+        Assert.That(revealed.Invoke(run, null), Is.True);
+    }
+
+    [Test]
+    public void CorridorOrdersCanReachOtherSegmentsAroundATurn()
+    {
+        var rooms = (IList)typeof(GameRun).GetField("rooms", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        Type kindType = typeof(GameRun).GetNestedType("RoomKind", BindingFlags.NonPublic);
+        object[] corridor = new object[3];
+        Vector3[] centers = { Vector3.zero, Vector3.right * 10f, new Vector3(10f, 0f, 10f) };
+        for (int i = 0; i < corridor.Length; i++)
+        {
+            corridor[i] = Activator.CreateInstance(roomType, true);
+            roomType.GetField("kind").SetValue(corridor[i], Enum.Parse(kindType, "Corridor"));
+            roomType.GetField("center").SetValue(corridor[i], centers[i]);
+            roomType.GetField("width").SetValue(corridor[i], 10f);
+            roomType.GetField("depthSize").SetValue(corridor[i], 10f);
+            rooms.Add(corridor[i]);
+        }
+        ((Array)roomType.GetField("neighbours").GetValue(corridor[0])).SetValue(corridor[1], 1);
+        ((Array)roomType.GetField("neighbours").GetValue(corridor[1])).SetValue(corridor[0], 3);
+        ((Array)roomType.GetField("neighbours").GetValue(corridor[1])).SetValue(corridor[2], 0);
+        ((Array)roomType.GetField("neighbours").GetValue(corridor[2])).SetValue(corridor[1], 2);
+        typeof(GameRun).GetField("currentRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, corridor[0]);
+        MethodInfo route = typeof(GameRun).GetMethod("CorridorRoute", BindingFlags.Instance | BindingFlags.NonPublic);
+        var path = (IList)route.Invoke(run, new[] { corridor[0], corridor[2] });
+        Assert.That(path.Count, Is.EqualTo(3));
+        Assert.That(path[1], Is.SameAs(corridor[1]));
+        MethodInfo clearLine = typeof(GameRun).GetMethod("CorridorLineWalkable", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(clearLine.Invoke(run, new object[] { centers[0], centers[1] }), Is.True);
+        Assert.That(clearLine.Invoke(run, new object[] { centers[0], centers[2] }), Is.False);
+        MethodInfo simplify = typeof(GameRun).GetMethod("SimplifyCorridorWaypoints", BindingFlags.Instance | BindingFlags.NonPublic);
+        var straight = (List<Vector3>)simplify.Invoke(run, new object[] { centers[0], new List<Vector3> { centers[0], centers[1] } });
+        Assert.That(straight, Is.EqualTo(new[] { centers[1] }));
+        var turn = (List<Vector3>)simplify.Invoke(run, new object[] { centers[0], new List<Vector3> { centers[0], centers[1], centers[2] } });
+        Assert.That(turn, Is.EqualTo(new[] { centers[1], centers[2] }));
+        Vector3 destination = centers[2] + Vector3.right;
+        Assert.That(run.ClampToCurrentRoom(destination), Is.EqualTo(destination));
+        Assert.That(run.IsTransitioning, Is.False);
+    }
+
+    [Test]
+    public void AgentKeepsFollowingCorridorWaypointsWithoutATransition()
+    {
+        PlayerController agent = Squad()[0];
+        Vector3[] points = { Vector3.zero, Vector3.right * 5f, new Vector3(5f, 0f, 5f) };
+        agent.transform.position = points[0];
+        agent.IssueCorridorPath(points);
+        MethodInfo advance = typeof(PlayerController).GetMethod("MoveToDestination", BindingFlags.Instance | BindingFlags.NonPublic);
+        FieldInfo destination = typeof(PlayerController).GetField("destination", BindingFlags.Instance | BindingFlags.NonPublic);
+        advance.Invoke(agent, new object[] { 0f });
+        Assert.That(destination.GetValue(agent), Is.EqualTo(points[1]));
+        agent.transform.position = points[1];
+        advance.Invoke(agent, new object[] { 0f });
+        Assert.That(destination.GetValue(agent), Is.EqualTo(points[2]));
+        agent.transform.position = points[2];
+        advance.Invoke(agent, new object[] { 0f });
+        Assert.That(agent.ReachedDestination, Is.True);
+        Assert.That(run.IsTransitioning, Is.False);
+    }
+
+    [Test]
+    public void CorridorEdgesWithoutFloorOrBetweenCorridorsHaveNoPerimeterWalls()
+    {
+        var rooms = (IList)typeof(GameRun).GetField("rooms", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        Type kindType = typeof(GameRun).GetNestedType("RoomKind", BindingFlags.NonPublic);
+        object room = Activator.CreateInstance(roomType, true);
+        object next = Activator.CreateInstance(roomType, true);
+        object corridorKind = Enum.Parse(kindType, "Corridor");
+        roomType.GetField("kind").SetValue(room, corridorKind);
+        roomType.GetField("kind").SetValue(next, corridorKind);
+        roomType.GetField("width").SetValue(room, 18f);
+        roomType.GetField("depthSize").SetValue(room, 14f);
+        var root = new GameObject("Corridor");
+        root.transform.SetParent(roots[0].transform);
+        roomType.GetField("root").SetValue(room, root);
+        rooms.Add(room);
+        ((Array)roomType.GetField("neighbours").GetValue(room)).SetValue(next, 1);
+        MethodInfo build = typeof(GameRun).GetMethod("BuildWall", BindingFlags.Instance | BindingFlags.NonPublic);
+        build.Invoke(run, new object[] { room, 0, false });
+        build.Invoke(run, new object[] { room, 1, false });
+        var walls = (Transform[])roomType.GetField("walls").GetValue(room);
+        Assert.That(walls[0].childCount, Is.Zero);
+        Assert.That(walls[1].childCount, Is.Zero);
+    }
+
+    [Test]
+    public void HexBackgroundSpeedIncreasesWhenSquadHealthFalls()
+    {
+        Assert.That(AssetDatabase.LoadAssetAtPath<Shader>("Assets/Resources/FX/HexBackground.shader"), Is.Not.Null);
+        Assert.That(AssetDatabase.LoadAssetAtPath<Shader>("Assets/Resources/FX/FloorShadow.shader"), Is.Not.Null);
+        Assert.That(HexBackground.MotionSpeed(0f), Is.GreaterThan(HexBackground.MotionSpeed(1f)));
+        Assert.That(HexBackground.MotionSpeed(0.5f), Is.InRange(HexBackground.MotionSpeed(1f), HexBackground.MotionSpeed(0f)));
+    }
+
+    [Test]
+    public void RoomWallsStayVisibleFromAdjacentCorridor()
+    {
+        var rooms = (IList)typeof(GameRun).GetField("rooms", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        Type kindType = typeof(GameRun).GetNestedType("RoomKind", BindingFlags.NonPublic);
+        object corridor = Activator.CreateInstance(roomType, true);
+        object chamber = Activator.CreateInstance(roomType, true);
+        roomType.GetField("kind").SetValue(corridor, Enum.Parse(kindType, "Corridor"));
+        roomType.GetField("position").SetValue(corridor, Vector2Int.zero);
+        roomType.GetField("position").SetValue(chamber, Vector2Int.right);
+        MeshRenderer markedWall = null;
+        foreach (object room in new[] { corridor, chamber })
+        {
+            var roomRoot = new GameObject("Room");
+            roomRoot.transform.SetParent(roots[0].transform);
+            roomType.GetField("root").SetValue(room, roomRoot);
+            var walls = (Transform[])roomType.GetField("walls").GetValue(room);
+            var states = (IDictionary)roomType.GetField("wallRendererStates").GetValue(room);
+            for (int direction = 0; direction < 4; direction++)
+            {
+                var wall = new GameObject("Wall");
+                wall.transform.SetParent(roomRoot.transform);
+                walls[direction] = wall.transform;
+                var renderer = wall.AddComponent<MeshRenderer>();
+                states.Add(renderer, true);
+                if (room == chamber && direction == 3) markedWall = renderer;
+            }
+            rooms.Add(room);
+        }
+        markedWall.enabled = false;
+        typeof(GameRun).GetField("currentRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, corridor);
+        typeof(GameRun).GetMethod("RefreshRoomLighting", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(run, null);
+        Assert.That(markedWall.enabled, Is.True);
     }
 
     [Test]

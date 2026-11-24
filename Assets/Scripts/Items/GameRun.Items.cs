@@ -25,7 +25,8 @@ namespace MouseKeeper
             else
             {
                 foreach (Vector3 defeatPosition in room.defeatPositions)
-                    SpawnVial(cashVialPrefab, RewardPosition(defeatPosition), false, true);
+                    if (Random.value < 0.4f)
+                        SpawnVial(cashVialPrefab, RewardPosition(defeatPosition), false, true);
             }
             room.defeatPositions.Clear();
         }

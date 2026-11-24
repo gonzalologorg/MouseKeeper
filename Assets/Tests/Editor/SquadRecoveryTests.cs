@@ -734,9 +734,6 @@ public sealed class SquadRecoveryTests
         typeof(PlayerController).GetProperty("Health").SetValue(injured, injured.MaxHealth * 0.41f);
         Assert.That(run.TrySelectRescue(rescuer, out _, out _), Is.False);
         typeof(PlayerController).GetProperty("Health").SetValue(injured, injuredHealth);
-        typeof(MouseEnemy).GetField("fleeing", PrivateInstance).SetValue(other, true);
-        Assert.That(run.TrySelectRescue(rescuer, out _, out _), Is.False);
-        typeof(MouseEnemy).GetField("fleeing", PrivateInstance).SetValue(other, false);
         rescuer.SetDestination(Vector3.right * 5f);
         Assert.That(run.TrySelectRescue(rescuer, out _, out _), Is.False);
         rescuer.CancelMoveOrder();

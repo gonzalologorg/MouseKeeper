@@ -12,6 +12,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6af06720fd8b4536be85c0bdb3c7b2da, type: 3}
   m_Name: ExpeditionCatalog
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.ExpeditionCatalog
+  enemySpawnPool: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900001, type: 2}
   agents:
   - {fileID: 11400000, guid: 5c171c904831ac641a5572f48965c8d2, type: 2}
   - {fileID: 11400000, guid: db1c957dbdd38d748a7a94d75da016e7, type: 2}

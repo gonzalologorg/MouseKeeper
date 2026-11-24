@@ -4,20 +4,60 @@ using System.Reflection;
 using MouseKeeper;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEditor;
 using Object = UnityEngine.Object;
 
 public sealed class BalanceAndCameraTests
 {
     const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
 
-    [TestCase(14f, 10f, 0, false, 3)]
-    [TestCase(18f, 14f, 0, false, 4)]
-    [TestCase(22f, 18f, 0, false, 5)]
-    [TestCase(14f, 14f, 1, false, 3)]
-    [TestCase(22f, 10f, 1, false, 4)]
-    [TestCase(22f, 14f, 1, false, 5)]
+    [Test]
+    public void RatIsDetectedOnAgentButNotBesideOrPassingAbove()
+    {
+        var agent = new Bounds(new Vector3(0f, 0.9f, 0f), new Vector3(0.8f, 1.8f, 0.8f));
+        var rat = new Bounds(new Vector3(0f, 2.3f, 0f), new Vector3(0.7f, 1f, 0.7f));
+        Assert.That(MouseEnemy.IsStandingOnAgent(rat, agent), Is.True);
+        rat.center = new Vector3(1.2f, 2.3f, 0f);
+        Assert.That(MouseEnemy.IsStandingOnAgent(rat, agent), Is.False);
+        rat.center = new Vector3(0f, 3f, 0f);
+        Assert.That(MouseEnemy.IsStandingOnAgent(rat, agent), Is.False);
+        rat.center = new Vector3(0.6f, 0.5f, 0f);
+        Assert.That(MouseEnemy.IsStandingOnAgent(rat, agent), Is.False);
+    }
+
+    [Test]
+    public void BlasterUsesDartPrefabAndRoomGeometryUsesWorldLayer()
+    {
+        var weapon = AssetDatabase.LoadAssetAtPath<RaytraceWeaponDefinition>("Assets/Data/Weapons/MouseBlaster.asset");
+        var dart = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/Resources/FX/Dart.prefab");
+        Assert.That(weapon, Is.Not.Null);
+        Assert.That(dart, Is.Not.Null);
+        Assert.That(weapon.projectileEffect, Is.SameAs(dart));
+        Assert.That(dart.GetComponentInChildren<ParticleSystem>(), Is.Not.Null);
+        int world = LayerMask.NameToLayer("World");
+        Assert.That(world, Is.GreaterThanOrEqualTo(0));
+        var room = new GameObject("Room");
+        try
+        {
+            var wall = new GameObject("Wall");
+            wall.transform.SetParent(room.transform);
+            var collider = wall.AddComponent<BoxCollider>();
+            typeof(GameRun).GetMethod("SetWorldLayer", BindingFlags.Static | BindingFlags.NonPublic)
+                .Invoke(null, new object[] { room });
+            Assert.That(room.layer, Is.EqualTo(world));
+            Assert.That(collider.gameObject.layer, Is.EqualTo(world));
+        }
+        finally { Object.DestroyImmediate(room); }
+    }
+
+    [TestCase(14f, 10f, 0, false, 11)]
+    [TestCase(18f, 14f, 0, false, 15)]
+    [TestCase(22f, 18f, 0, false, 19)]
+    [TestCase(14f, 14f, 1, false, 11)]
+    [TestCase(22f, 10f, 1, false, 15)]
+    [TestCase(22f, 14f, 1, false, 19)]
     [TestCase(14f, 10f, 0, true, 1)]
-    [TestCase(22f, 18f, 2, true, 2)]
+    [TestCase(22f, 18f, 2, true, 1)]
     public void MouseCountScalesWithRoomAreaAndFloor(float width, float depth, int floor, bool boss, int expected)
     {
         var runObject = new GameObject("Test run");
@@ -36,10 +76,36 @@ public sealed class BalanceAndCameraTests
         finally { Object.DestroyImmediate(runObject); }
     }
 
-    [TestCase(40f, 1, 60f)]
-    [TestCase(200f, 1, 300f)]
-    [TestCase(40f, 3, 69.6f)]
-    [TestCase(40f, 10, 79.2f)]
+    [Test]
+    public void BossIsExcludedFromRatLimitAndMushroomSplitsRespectIt()
+    {
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        object room = Activator.CreateInstance(roomType, true);
+        var bossObject = new GameObject("Boss");
+        try
+        {
+            var boss = bossObject.AddComponent<MouseEnemy>();
+            roomType.GetField("boss").SetValue(room, boss);
+            FieldInfo enemies = roomType.GetField("enemies");
+            MethodInfo ratCount = typeof(GameRun).GetMethod("BossRatCount", BindingFlags.Static | BindingFlags.NonPublic);
+            MethodInfo offspringCount = typeof(GameRun).GetMethod("BossOffspringCount", BindingFlags.Static | BindingFlags.NonPublic);
+            enemies.SetValue(room, 6);
+            Assert.That(ratCount.Invoke(null, new[] { room }), Is.EqualTo(5));
+            Assert.That(offspringCount.Invoke(null, new[] { room }), Is.EqualTo(1));
+            enemies.SetValue(room, 5);
+            Assert.That(ratCount.Invoke(null, new[] { room }), Is.EqualTo(4));
+            Assert.That(offspringCount.Invoke(null, new[] { room }), Is.EqualTo(2));
+            typeof(MouseEnemy).GetField("defeated", PrivateInstance).SetValue(boss, true);
+            Assert.That(ratCount.Invoke(null, new[] { room }), Is.EqualTo(5));
+            typeof(MouseEnemy).GetField("defeated", PrivateInstance).SetValue(boss, false);
+        }
+        finally { Object.DestroyImmediate(bossObject); }
+    }
+
+    [TestCase(40f, 1, 24f)]
+    [TestCase(200f, 1, 120f)]
+    [TestCase(40f, 3, 27.84f)]
+    [TestCase(40f, 10, 31.68f)]
     public void MouseHealthUsesGentleCappedDepthScaling(float initialHealth, int depth, float expectedHealth)
     {
         var runObject = new GameObject("Test run");
@@ -71,11 +137,14 @@ public sealed class BalanceAndCameraTests
         Assert.That(PlayerController.AimErrorDegrees(7, 12f), Is.LessThan(PlayerController.AimErrorDegrees(3, 12f)));
     }
 
-    [TestCase(MouseEnemy.MouseVariant.Normal, true)]
-    [TestCase(MouseEnemy.MouseVariant.Jumping, false)]
-    [TestCase(MouseEnemy.MouseVariant.Tanky, false)]
-    [TestCase(MouseEnemy.MouseVariant.Speedy, false)]
-    public void OnlyNormalRatsFleeWhenHit(MouseEnemy.MouseVariant variant, bool expected)
+    [TestCase(MouseEnemy.MouseVariant.Normal)]
+    [TestCase(MouseEnemy.MouseVariant.Jumping)]
+    [TestCase(MouseEnemy.MouseVariant.Tanky)]
+    [TestCase(MouseEnemy.MouseVariant.Speedy)]
+    [TestCase(MouseEnemy.MouseVariant.Explosive)]
+    [TestCase(MouseEnemy.MouseVariant.Poison)]
+    [TestCase(MouseEnemy.MouseVariant.Mushroom)]
+    public void RatsRemainTargetableAfterBeingHit(MouseEnemy.MouseVariant variant)
     {
         var runObject = new GameObject("Test run");
         var agentObject = new GameObject("Test agent");
@@ -91,10 +160,10 @@ public sealed class BalanceAndCameraTests
             var agent = agentObject.AddComponent<PlayerController>();
             agent.Initialize(run, new AgentProfile());
             var mouse = mouseObject.AddComponent<MouseEnemy>();
-            mouse.ConfigureVariant(variant);
+            mouse.SetBehavior(variant);
             mouse.Initialize(run, agent, Vector3.zero, 1);
             mouse.TakeDamage(1f, agent);
-            Assert.That((bool)typeof(MouseEnemy).GetField("fleeing", PrivateInstance).GetValue(mouse), Is.EqualTo(expected));
+            Assert.That(mouse.IsTargetable, Is.True);
         }
         finally
         {
@@ -110,24 +179,89 @@ public sealed class BalanceAndCameraTests
         }
     }
 
-    [TestCase(0, 0f, MouseEnemy.MouseVariant.Normal)]
-    [TestCase(1, 0.199f, MouseEnemy.MouseVariant.Jumping)]
+    [TestCase(0, 0.01f, MouseEnemy.MouseVariant.Jumping)]
+    [TestCase(0, 0.05f, MouseEnemy.MouseVariant.Tanky)]
+    [TestCase(0, 0.1f, MouseEnemy.MouseVariant.Speedy)]
+    [TestCase(0, 0.2f, MouseEnemy.MouseVariant.Normal)]
+    [TestCase(1, 0.1f, MouseEnemy.MouseVariant.Jumping)]
     [TestCase(1, 0.2f, MouseEnemy.MouseVariant.Tanky)]
-    [TestCase(1, 0.4f, MouseEnemy.MouseVariant.Speedy)]
-    [TestCase(1, 0.601f, MouseEnemy.MouseVariant.Normal)]
-    [TestCase(2, 0.333f, MouseEnemy.MouseVariant.Jumping)]
-    [TestCase(2, 0.334f, MouseEnemy.MouseVariant.Tanky)]
-    [TestCase(2, 0.667f, MouseEnemy.MouseVariant.Speedy)]
-    [TestCase(2, 1f, MouseEnemy.MouseVariant.Speedy)]
+    [TestCase(1, 0.3f, MouseEnemy.MouseVariant.Speedy)]
+    [TestCase(1, 0.5f, MouseEnemy.MouseVariant.Normal)]
+    [TestCase(1, 0.85f, MouseEnemy.MouseVariant.Explosive)]
+    [TestCase(1, 0.9f, MouseEnemy.MouseVariant.Poison)]
+    [TestCase(2, 1f, MouseEnemy.MouseVariant.Mushroom)]
     public void RareRatDistributionMatchesFloor(int floor, float roll, MouseEnemy.MouseVariant expected)
     {
-        var method = typeof(GameRun).GetMethod("ChooseMouseVariant", BindingFlags.Static | BindingFlags.NonPublic);
-        Assert.That(method.Invoke(null, new object[] { floor, roll }), Is.EqualTo(expected));
+        var pool = AssetDatabase.LoadAssetAtPath<EnemySpawnPool>("Assets/Data/Enemies/DefaultSpawnPool.asset");
+        Assert.That(pool, Is.Not.Null);
+        Assert.That(pool.Choose(floor, roll).behavior, Is.EqualTo(expected));
     }
 
-    [TestCase(MouseEnemy.MouseVariant.Jumping, 120f, 12f, 2.4f)]
-    [TestCase(MouseEnemy.MouseVariant.Tanky, 160f, 6.4f, 1.2f)]
-    [TestCase(MouseEnemy.MouseVariant.Speedy, 40f, 8f, 4.8f)]
+    [Test]
+    public void SpawnPoolUsesRelativeWeightsAndSkipsDisabledEntries()
+    {
+        var pool = ScriptableObject.CreateInstance<EnemySpawnPool>();
+        var first = ScriptableObject.CreateInstance<EnemyPreset>();
+        var second = ScriptableObject.CreateInstance<EnemyPreset>();
+        try
+        {
+            pool.enemies = new[] {
+                new EnemySpawnPool.Entry { enemy = first, floorWeights = new[] { 1f, 0f } },
+                new EnemySpawnPool.Entry { enemy = second, floorWeights = new[] { 3f, 2f } }
+            };
+            Assert.That(pool.Choose(0, 0.249f), Is.SameAs(first));
+            Assert.That(pool.Choose(0, 0.25f), Is.SameAs(second));
+            Assert.That(pool.Choose(3, 0f), Is.SameAs(second));
+            pool.enemies[1].floorWeights[1] = 0f;
+            Assert.That(pool.Choose(1, 0f), Is.Null);
+        }
+        finally
+        {
+            Object.DestroyImmediate(first);
+            Object.DestroyImmediate(second);
+            Object.DestroyImmediate(pool);
+        }
+    }
+
+    [Test]
+    public void MushroomOffspringLoseOneThirdOfTheirParentsHealthEachGeneration()
+    {
+        var parentObject = new GameObject("Parent");
+        var childObject = new GameObject("Child");
+        var grandchildObject = new GameObject("Grandchild");
+        var finalObject = new GameObject("Final generation");
+        try
+        {
+            var parent = parentObject.AddComponent<MouseEnemy>();
+            var child = childObject.AddComponent<MouseEnemy>();
+            var grandchild = grandchildObject.AddComponent<MouseEnemy>();
+            var final = finalObject.AddComponent<MouseEnemy>();
+            parent.maxHealth = 80f;
+            parent.movementSpeed = 5f;
+            child.InitializeOffspring(parent);
+            grandchild.InitializeOffspring(child);
+            final.InitializeOffspring(grandchild);
+            Assert.That(child.SplitGeneration, Is.EqualTo(1));
+            Assert.That(grandchild.SplitGeneration, Is.EqualTo(2));
+            Assert.That(child.maxHealth, Is.EqualTo(80f * 0.67f).Within(0.001f));
+            Assert.That(grandchild.maxHealth, Is.EqualTo(80f * 0.67f * 0.67f).Within(0.001f));
+            Assert.That(child.movementSpeed, Is.EqualTo(6f).Within(0.001f));
+            Assert.That(grandchild.movementSpeed, Is.EqualTo(7f).Within(0.001f));
+            Assert.That(final.movementSpeed, Is.EqualTo(8f).Within(0.001f));
+        }
+        finally
+        {
+            Object.DestroyImmediate(parentObject);
+            Object.DestroyImmediate(childObject);
+            Object.DestroyImmediate(grandchildObject);
+            Object.DestroyImmediate(finalObject);
+        }
+    }
+
+    [TestCase(MouseEnemy.MouseVariant.Jumping, 36f, 4.8f, 2.4f)]
+    [TestCase(MouseEnemy.MouseVariant.Tanky, 48f, 2.56f, 1.2f)]
+    [TestCase(MouseEnemy.MouseVariant.Speedy, 12f, 3.2f, 4.8f)]
+    [TestCase(MouseEnemy.MouseVariant.Explosive, 24f, 2.56f, 1.2f)]
     public void RareRatStatsScaleFromTheNormalRat(
         MouseEnemy.MouseVariant variant, float health, float damage, float speed)
     {
@@ -139,7 +273,9 @@ public sealed class BalanceAndCameraTests
             var run = runObject.AddComponent<GameRun>();
             var agent = agentObject.AddComponent<PlayerController>();
             var mouse = mouseObject.AddComponent<MouseEnemy>();
-            mouse.ConfigureVariant(variant);
+            var preset = AssetDatabase.LoadAssetAtPath<EnemyPreset>("Assets/Data/Enemies/" + variant + ".asset");
+            Assert.That(preset, Is.Not.Null);
+            preset.ApplyTo(mouse);
             mouse.Initialize(run, agent, Vector3.zero, 1);
             Assert.That(mouse.maxHealth, Is.EqualTo(health).Within(0.001f));
             Assert.That(mouse.attackDamage, Is.EqualTo(damage).Within(0.001f));
@@ -175,13 +311,11 @@ public sealed class BalanceAndCameraTests
             agents.Add(first);
             agents.Add(second);
             var mouse = mouseObject.AddComponent<MouseEnemy>();
-            mouse.ConfigureVariant(MouseEnemy.MouseVariant.Jumping);
+            AssetDatabase.LoadAssetAtPath<EnemyPreset>("Assets/Data/Enemies/Jumping.asset").ApplyTo(mouse);
             mouse.Initialize(run, first, Vector3.zero, 1);
             Physics.SyncTransforms();
             MethodInfo update = typeof(MouseEnemy).GetMethod("UpdateJump", PrivateInstance);
             FieldInfo target = typeof(MouseEnemy).GetField("jumpTarget", PrivateInstance);
-            update.Invoke(mouse, new object[] { 0.9f });
-            Assert.That(target.GetValue(mouse), Is.Null);
             update.Invoke(mouse, new object[] { 0.11f });
             Assert.That(target.GetValue(mouse), Is.SameAs(first));
             Assert.That(mouse.transform.position.y, Is.GreaterThan(1f));
@@ -225,7 +359,7 @@ public sealed class BalanceAndCameraTests
             agent.Initialize(run, new AgentProfile());
             ((List<PlayerController>)typeof(GameRun).GetField("agents", PrivateInstance).GetValue(run)).Add(agent);
             var mouse = mouseObject.AddComponent<MouseEnemy>();
-            mouse.ConfigureVariant(MouseEnemy.MouseVariant.Jumping);
+            AssetDatabase.LoadAssetAtPath<EnemyPreset>("Assets/Data/Enemies/Jumping.asset").ApplyTo(mouse);
             mouse.Initialize(run, agent, Vector3.zero, 1);
             Physics.SyncTransforms();
             MethodInfo update = typeof(MouseEnemy).GetMethod("UpdateJump", PrivateInstance);
@@ -243,7 +377,7 @@ public sealed class BalanceAndCameraTests
             Physics.SyncTransforms();
             cooldown.SetValue(mouse, 0f);
             for (int i = 0; i < 7; i++) update.Invoke(mouse, new object[] { 0.1f });
-            Assert.That(agent.Health, Is.EqualTo(initialHealth - 12f),
+            Assert.That(agent.Health, Is.EqualTo(initialHealth - 5f),
                 "Rat position: " + mouse.transform.position + "; agent position: " + agent.transform.position +
                 "; rat bounds: " + mouse.GetComponent<CharacterController>().bounds +
                 "; agent bounds: " + agent.GetComponent<CharacterController>().bounds);
@@ -304,10 +438,6 @@ public sealed class BalanceAndCameraTests
             Assert.That(first.ReachedDestination && second.ReachedDestination, Is.True);
             Assert.That(run.SelectTarget(first), Is.SameAs(focus));
             Assert.That(run.SelectTarget(second), Is.SameAs(focus));
-            typeof(MouseEnemy).GetField("hidden", PrivateInstance).SetValue(focus, true);
-            Assert.That(run.SelectTarget(first), Is.SameAs(close));
-            typeof(MouseEnemy).GetField("hidden", PrivateInstance).SetValue(focus, false);
-            Assert.That(run.SelectTarget(first), Is.SameAs(focus));
             run.MouseDefeated(focus);
             Assert.That(run.SelectTarget(first), Is.SameAs(close));
         }
@@ -453,16 +583,17 @@ public sealed class BalanceAndCameraTests
             var agent = agentObject.AddComponent<PlayerController>();
             agent.Initialize(run, new AgentProfile());
             var mouse = mouseObject.AddComponent<MouseEnemy>();
+            mouse.maxHealth = 200f;
             mouse.Initialize(run, agent, Vector3.zero, 1);
             var weapon = new WeaponInstance(definition);
             FieldInfo health = typeof(MouseEnemy).GetField("health", PrivateInstance);
 
             mouse.TakeDamage(20f, agent, weapon);
-            Assert.That((float)health.GetValue(mouse), Is.EqualTo(66f));
+            Assert.That((float)health.GetValue(mouse), Is.EqualTo(106f).Within(0.001f));
             mouse.TakeDamage(15f, agent, weapon);
-            Assert.That((float)health.GetValue(mouse), Is.EqualTo(55f));
+            Assert.That((float)health.GetValue(mouse), Is.EqualTo(95f).Within(0.001f));
             mouse.TakeDamage(20f, agent);
-            Assert.That((float)health.GetValue(mouse), Is.EqualTo(35f));
+            Assert.That((float)health.GetValue(mouse), Is.EqualTo(75f).Within(0.001f));
         }
         finally
         {

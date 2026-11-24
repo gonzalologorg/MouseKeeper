@@ -7,10 +7,7 @@ namespace MouseKeeper
     public sealed partial class GameRun : MonoBehaviour
     {
         public GameObject roomPrefab;
-        public MouseEnemy[] mousePrefabs;
-        public GameObject jumpingMouseModel;
-        public GameObject tankyMouseModel;
-        public GameObject speedyMouseModel;
+        public EnemySpawnPool enemySpawnPool;
         public WeaponDefinition[] weapons;
         public PassiveItemDefinition[] passiveItems;
         public GameObject cashVialPrefab;
@@ -40,6 +37,7 @@ namespace MouseKeeper
         float cameraAspect;
         Minimap minimap;
         DamageIndicators damageIndicators;
+        HexBackground hexBackground;
         SquadIndicators squadIndicators;
         Texture2D hudIcons;
         float transitionDelay;
@@ -52,7 +50,7 @@ namespace MouseKeeper
         int widthPhase;
         int depthPhase;
 
-        enum RoomKind { Combat, Shop, Treasure }
+        enum RoomKind { Combat, Shop, Treasure, Corridor }
 
         sealed class Room
         {
@@ -77,6 +75,7 @@ namespace MouseKeeper
             public bool visited;
             public bool cleared;
             public bool spawning;
+            public int spawnGeneration;
             public bool hasPillars;
             public int depth;
         }
@@ -103,6 +102,20 @@ namespace MouseKeeper
                 return;
             }
             weapons = ExpeditionSession.Catalog.weapons;
+            if (enemySpawnPool == null) enemySpawnPool = ExpeditionSession.Catalog.enemySpawnPool;
+            if (enemySpawnPool == null || enemySpawnPool.boss == null)
+            {
+                Debug.LogError("El pool de enemigos o su jefe no están configurados.", this);
+                enabled = false;
+                return;
+            }
+            for (int floor = 0; floor < ExpeditionSession.FloorCount; floor++)
+                if (enemySpawnPool.Choose(floor, 0f) == null)
+                {
+                    Debug.LogError("El pool no tiene enemigos con peso positivo para el piso " + (floor + 1) + ".", this);
+                    enabled = false;
+                    return;
+                }
             squad = new AgentDefinition[ExpeditionSession.SquadSize];
             for (int i = 0; i < squad.Length; i++)
                 squad[i] = ExpeditionSession.Catalog.agents[ExpeditionSession.Data.selectedAgents[i]];
@@ -126,6 +139,8 @@ namespace MouseKeeper
             viewCamera.orthographic = true;
             viewCamera.orthographicSize = 11f;
             viewCamera.transform.rotation = Quaternion.Euler(50f, 45f, 0f);
+            hexBackground = gameObject.AddComponent<HexBackground>();
+            hexBackground.Initialize(viewCamera);
             damageIndicators = gameObject.AddComponent<DamageIndicators>();
             damageIndicators.Initialize(viewCamera);
             squadIndicators = gameObject.AddComponent<SquadIndicators>();
@@ -160,7 +175,8 @@ namespace MouseKeeper
                 BuildRoom(room);
             }
             currentRoom = null;
-            EnterRoom(rooms[0], -1);
+            if (IntroSequence.ConsumeArrival()) StartCoroutine(EnterFromIntro(rooms[0]));
+            else EnterRoom(rooms[0], -1);
         }
 
         void CreateSquad()
@@ -189,6 +205,7 @@ namespace MouseKeeper
                 root.AddComponent<AgentOcclusionIndicator>().Initialize();
                 PlayerController agent = root.AddComponent<PlayerController>();
                 agent.Initialize(this, profile);
+                agent.SetSpecialty(ExpeditionSession.Data.specialties != null ? ExpeditionSession.Data.specialties[i] : Specialty.None);
                 WeaponDefinition startingWeapon = ExpeditionSession.Active
                     ? ExpeditionSession.Catalog.weapons[ExpeditionSession.Data.selectedWeapons[i]]
                     : definition != null && definition.startingWeapon != null

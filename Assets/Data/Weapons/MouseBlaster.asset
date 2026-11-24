@@ -28,3 +28,4 @@ MonoBehaviour:
   bulletAmount: 1
   automatic: 1
   spreadAngle: 12
+  projectileEffect: {fileID: 220324781440367808, guid: bcc2e644f61c0f24081766d30ca6c1c7, type: 3}
