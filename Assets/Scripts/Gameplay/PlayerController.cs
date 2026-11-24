@@ -29,6 +29,7 @@ namespace MouseKeeper
         readonly HashSet<PlayerController> reprimanded = new HashSet<PlayerController>();
         readonly HashSet<WeaponInstance> equippedWeapons = new HashSet<WeaponInstance>();
         CharacterController controller;
+        NavigationMotor navigation;
         WeaponVisual weaponVisual;
         GameRun run;
         AgentProfile profile;
@@ -59,6 +60,7 @@ namespace MouseKeeper
             run = gameRun;
             profile = settings;
             controller = GetComponent<CharacterController>();
+            navigation = gameObject.AddComponent<NavigationMotor>();
             weaponVisual = gameObject.AddComponent<WeaponVisual>();
             MovementSpeed = settings.EffectiveSpeed;
             MaxHealth = settings.EffectiveHealth;
@@ -98,6 +100,7 @@ namespace MouseKeeper
 
         void Update()
         {
+            if (navigation != null) navigation.Pause();
             if (Dead || run == null || run.Finished) return;
             float dt = Time.deltaTime;
             fearRemaining = Mathf.Max(0f, fearRemaining - dt);
@@ -509,17 +512,6 @@ namespace MouseKeeper
 
         void MoveTowards(Vector3 point, float dt)
         {
-            Vector3 direction = point - transform.position;
-            direction.y = 0f;
-            if (direction.sqrMagnitude < 0.01f) return;
-            direction.Normalize();
-            if (Blocked(direction))
-            {
-                Vector3 left = Quaternion.Euler(0f, -55f, 0f) * direction;
-                Vector3 right = Quaternion.Euler(0f, 55f, 0f) * direction;
-                if (!Blocked(left)) direction = left;
-                else if (!Blocked(right)) direction = right;
-            }
             float agility = (profile.agility - 1) / 9f;
             bool traveling = run.UsesSquadTravelSpeed;
             if (!traveling)
@@ -527,21 +519,9 @@ namespace MouseKeeper
             float speed = (traveling ? run.SquadTravelSpeed : MovementSpeed * stamina * emergencySpeedMultiplier) *
                 (bardBuff ? 1.25f : 1f) * (EscapeInvulnerable ? 2f : 1f) *
                 (run.IsLastSurvivingAgent(this) ? 1.25f : 1f);
+            if (!navigation.DirectionTo(point, speed, out Vector3 direction)) return;
             float step = Mathf.Min(speed * dt, Vector3.Distance(transform.position, point));
             controller.Move(direction * step + Vector3.down * 2f * dt);
-        }
-
-        bool Blocked(Vector3 direction)
-        {
-            foreach (RaycastHit hit in Physics.SphereCastAll(transform.position + Vector3.up * 0.8f,
-                         0.3f, direction, 0.65f, ~0, QueryTriggerInteraction.Ignore))
-            {
-                if (hit.collider.transform.IsChildOf(transform) ||
-                    hit.collider.GetComponentInParent<PlayerController>() != null ||
-                    hit.collider.GetComponentInParent<MouseEnemy>() != null) continue;
-                return true;
-            }
-            return false;
         }
 
         public ItemPickup NearbyPickup()
@@ -685,6 +665,7 @@ namespace MouseKeeper
                 if (Health > 0f) { run.ResetAgentProgress(this); return; }
             }
             Dead = true;
+            navigation.ResetNavigation();
             controller.enabled = false;
             run.AgentDied(this);
         }
@@ -695,6 +676,7 @@ namespace MouseKeeper
             if (Dead) return;
             Health = 0f;
             Dead = true;
+            navigation.ResetNavigation();
             controller.enabled = false;
             run.AgentDied(this);
         }

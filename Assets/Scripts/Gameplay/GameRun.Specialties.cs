@@ -168,7 +168,7 @@ namespace MouseKeeper
             Vector3 doorway = abandoned.center + forward * halfSize;
             for (int i = 0; i < agents.Count; i++)
                 if (!agents[i].Dead) agents[i].SetDestination(doorway + forward * 2f + side * ((i - 1) * 0.8f));
-            float timeout = 8f;
+            float timeout = 5f;
             while (timeout > 0f)
             {
                 bool arrived = true;
@@ -177,6 +177,9 @@ namespace MouseKeeper
                 timeout -= Time.deltaTime;
                 yield return null;
             }
+            for (int i = 0; i < agents.Count; i++)
+                if (agents[i] != null && !agents[i].Dead && !agents[i].ReachedDestination)
+                    RescueTransitionAgent(agents[i], doorway + forward * 2f + side * ((i - 1) * 0.8f));
             if (exit != null) exit.SetOpen(false);
             if (entrance != null) entrance.SetOpen(false);
             yield return new WaitForSeconds(0.55f);
@@ -200,13 +203,6 @@ namespace MouseKeeper
             {
                 PlayerController agent = agents[i];
                 if (agent == null) continue;
-                if (!agent.Dead && !agent.ReachedDestination)
-                {
-                    CharacterController controller = agent.GetComponent<CharacterController>();
-                    controller.enabled = false;
-                    agent.transform.position = doorway + forward * 2f + side * ((i - 1) * 0.8f);
-                    controller.enabled = true;
-                }
                 agent.EscapeInvulnerable = false;
                 agent.CancelMoveOrder();
             }

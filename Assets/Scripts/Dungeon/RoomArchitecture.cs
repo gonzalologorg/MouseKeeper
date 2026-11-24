@@ -10,6 +10,7 @@ namespace MouseKeeper
         public GameObject[] pillars;
         public GameObject arch;
         public GameObject door;
+        public GameObject lamp;
 
         public bool IsValid()
         {

@@ -1,5 +1,6 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.AI;
 
 namespace MouseKeeper
 {
@@ -48,6 +49,7 @@ namespace MouseKeeper
         CheeseDecoy jumpCheese;
         GameRun run;
         CharacterController controller;
+        NavigationMotor navigation;
         BoxCollider selectionCollider;
         CharacterController targetController;
         Animator animator;
@@ -102,6 +104,7 @@ namespace MouseKeeper
             run = gameRun;
             player = target;
             controller = GetComponent<CharacterController>();
+            navigation = gameObject.AddComponent<NavigationMotor>();
             targetController = target.GetComponent<CharacterController>();
             animator = GetComponentInChildren<Animator>();
             hitFlash = GetComponent<HitFlash>();
@@ -142,6 +145,7 @@ namespace MouseKeeper
 
         void Update()
         {
+            if (navigation != null) navigation.Pause();
             if (defeated) return;
             PlayerController supportingAgent = run.AgentSupportingMouse(controller);
             if (supportingAgent != null)
@@ -185,8 +189,11 @@ namespace MouseKeeper
                 }
                 else
                 {
-                    transform.rotation = Quaternion.LookRotation(toCheese);
-                    controller.Move(toCheese.normalized * movementSpeed * Time.deltaTime + Vector3.down * 2f * Time.deltaTime);
+                    if (navigation.DirectionTo(cheese.transform.position, movementSpeed, out Vector3 cheeseDirection))
+                    {
+                        transform.rotation = Quaternion.LookRotation(cheeseDirection);
+                        controller.Move(cheeseDirection * movementSpeed * Time.deltaTime + Vector3.down * 2f * Time.deltaTime);
+                    }
                     UpdateAnimation(movementSpeed, false);
                 }
                 return;
@@ -225,9 +232,11 @@ namespace MouseKeeper
             Vector3 previousPosition = transform.position;
             if (direction.sqrMagnitude > 0.1f)
             {
-                direction.Normalize();
-                transform.rotation = Quaternion.LookRotation(direction);
-                controller.Move(direction * movementSpeed * dt + Vector3.down * 2f * dt);
+                if (navigation.DirectionTo(target, movementSpeed, out direction))
+                {
+                    transform.rotation = Quaternion.LookRotation(direction);
+                    controller.Move(direction * movementSpeed * dt + Vector3.down * 2f * dt);
+                }
             }
             Vector3 displacement = transform.position - previousPosition;
             displacement.y = 0f;
@@ -253,7 +262,14 @@ namespace MouseKeeper
                 jumpStart = transform.position;
                 Vector3 direction = (jumpCheese != null ? jumpCheese.transform.position : jumpTarget.transform.position) - jumpStart;
                 direction.y = 0f;
-                jumpEnd = jumpStart + Vector3.ClampMagnitude(direction, JumpDistance);
+                float distance = Mathf.Min(direction.magnitude, JumpDistance);
+                Vector3 targetPosition = jumpCheese != null ? jumpCheese.transform.position : jumpTarget.transform.position;
+                if (!navigation.DirectionTo(targetPosition, movementSpeed, out direction)) return;
+                navigation.Pause();
+                jumpEnd = jumpStart + direction * distance;
+                if (NavMesh.SamplePosition(jumpStart, out NavMeshHit jumpOrigin, 1.5f, NavMesh.AllAreas) &&
+                    NavMesh.Raycast(jumpOrigin.position, jumpEnd, out NavMeshHit edge, NavMesh.AllAreas))
+                    jumpEnd = edge.position - direction * 0.1f;
                 if (direction.sqrMagnitude > 0.001f) transform.rotation = Quaternion.LookRotation(direction);
                 jumpElapsed = 0f;
                 jumpCooldown = JumpInterval;
@@ -350,6 +366,7 @@ namespace MouseKeeper
                 else if (variant == MouseVariant.Mushroom && SplitGeneration < 3)
                     run.SplitMouse(this);
                 run.MouseDefeated(this);
+                navigation.ResetNavigation();
                 controller.enabled = false;
                 if (animator != null && animator.isActiveAndEnabled && animator.runtimeAnimatorController != null &&
                     animator.speed > 0f && animator.HasState(0, DeathState))

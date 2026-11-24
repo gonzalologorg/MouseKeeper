@@ -203,17 +203,29 @@ namespace MouseKeeper
             if (departureDoor != null) { departureDoor.SetHint(false); departureDoor.SetOpen(true); }
             if (arrivalDoor != null) arrivalDoor.SetOpen(true);
             if (departureDoor != null || arrivalDoor != null) yield return new WaitForSeconds(0.55f);
+            float[] travelTime = new float[agents.Count];
+            bool[] rescued = new bool[agents.Count];
             for (int phase = previous.kind == RoomKind.Corridor ? -1 : 0; phase < 2; phase++)
             {
                 for (int i = 0; i < agents.Count; i++)
-                    if (!agents[i].Dead)
+                    if (agents[i] != null && !agents[i].Dead && !rescued[i])
                         agents[i].SetDestination((phase < 0 ? previous.center : doorway + forward * (phase == 0 ? -1.6f : 2f)) + side * ((i - 1) * 0.8f));
                 bool arrived;
                 do
                 {
                     arrived = true;
-                    foreach (PlayerController agent in agents)
-                        if (!agent.Dead && !agent.ReachedDestination) arrived = false;
+                    for (int i = 0; i < agents.Count; i++)
+                    {
+                        PlayerController agent = agents[i];
+                        if (agent == null || agent.Dead || rescued[i] || agent.ReachedDestination) continue;
+                        travelTime[i] += Time.deltaTime;
+                        if (travelTime[i] >= 5f)
+                        {
+                            RescueTransitionAgent(agent, doorway + forward * 2f + side * ((i - 1) * 0.8f));
+                            rescued[i] = true;
+                        }
+                        else arrived = false;
+                    }
                     yield return null;
                 } while (!arrived);
             }
@@ -224,6 +236,17 @@ namespace MouseKeeper
             transitionDelay = 0.5f;
             IsTransitioning = false;
             ArriveInRoom(next);
+        }
+
+        static void RescueTransitionAgent(PlayerController agent, Vector3 position)
+        {
+            CharacterController controller = agent.GetComponent<CharacterController>();
+            bool wasEnabled = controller.enabled;
+            controller.enabled = false;
+            position.y = 0.05f;
+            agent.transform.position = position;
+            controller.enabled = wasEnabled;
+            agent.CancelMoveOrder();
         }
 
         void FitCameraToRoom(Room room)
@@ -290,7 +313,27 @@ namespace MouseKeeper
             room.root = new GameObject((room.kind == RoomKind.Combat ? "Room " : room.kind + " Room ") + room.position);
             room.root.transform.SetParent(transform);
             room.root.transform.position = room.center;
-            if (room.kind != RoomKind.Corridor && roomPrefab != null) Instantiate(roomPrefab, room.root.transform);
+            if (room.kind == RoomKind.Combat && room != rooms[0] && room != bossRoom)
+            {
+                var choices = new List<RoomLayout>();
+                if (roomLayouts != null)
+                    foreach (RoomLayout layout in roomLayouts)
+                        if (layout != null && (layout.hasRoomShell
+                            ? Mathf.Approximately(layout.minimumRoomSize.x, room.width) &&
+                              Mathf.Approximately(layout.minimumRoomSize.y, room.depthSize) &&
+                              room.neighbours[(int)layout.doorSide] != null &&
+                              room.neighbours[(int)layout.doorSide].kind == RoomKind.Corridor
+                            : layout.minimumRoomSize.x <= room.width && layout.minimumRoomSize.y <= room.depthSize))
+                            choices.Add(layout);
+                if (choices.Count > 0)
+                {
+                    RoomLayout layout = Instantiate(choices[Random.Range(0, choices.Count)], room.root.transform);
+                    if (layout.editorShell != null) layout.editorShell.SetActive(false);
+                    if (layout.hasRoomShell) room.hasPillars = false;
+                }
+                else if (roomPrefab != null) Instantiate(roomPrefab, room.root.transform);
+            }
+            else if (room.kind != RoomKind.Corridor && roomPrefab != null) Instantiate(roomPrefab, room.root.transform);
             room.floor = Block(room.root.transform, "Floor", new Vector3(0f, -0.5f, 0f),
                 room.kind == RoomKind.Corridor ? new Vector3(CorridorWidth, 1f, CorridorWidth) : new Vector3(room.width, 1f, room.depthSize),
                 new Color(0.24f, 0.25f, 0.28f)).GetComponent<Collider>();
@@ -325,6 +368,9 @@ namespace MouseKeeper
                 return;
             }
             int count = MouseCountForRoom(room);
+            RoomLayout roomLayout = room.root.GetComponentInChildren<RoomLayout>();
+            if (room != bossRoom && roomLayout != null && roomLayout.enemyCount >= 0)
+                count = roomLayout.enemyCount;
             room.enemies = count;
             room.spawning = count > 0;
             room.cleared = count == 0;
@@ -535,6 +581,15 @@ namespace MouseKeeper
                 model.transform.localPosition = new Vector3(start + width * (i + 0.5f), 0f, 0f);
                 model.transform.localRotation = Quaternion.identity;
                 model.transform.localScale = new Vector3(width / moduleWidth, 1f, 1f);
+            }
+            if (roomArchitecture.lamp != null && length >= 3f && (count > 1 || windowIndex < 0) &&
+                (parent.name == "Wall 0" || parent.name == "Wall 1"))
+            {
+                int lampIndex = count / 2;
+                if (lampIndex == windowIndex) lampIndex = (lampIndex + 1) % count;
+                GameObject lamp = Instantiate(roomArchitecture.lamp, parent);
+                lamp.transform.localPosition = new Vector3(start + width * (lampIndex + 0.5f), 2.4f, -0.12f);
+                lamp.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             }
             var colliderObject = new GameObject("Wall Collider");
             colliderObject.transform.SetParent(parent, false);

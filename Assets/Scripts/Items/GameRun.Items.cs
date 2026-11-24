@@ -12,6 +12,16 @@ namespace MouseKeeper
 
         void SpawnRoomRewards(Room room)
         {
+            RoomLayout layout = room.root.GetComponentInChildren<RoomLayout>();
+            if (layout != null)
+            {
+                SpawnLayoutRewards(room, layout);
+                if (layout.replaceDefaultRewards)
+                {
+                    room.defeatPositions.Clear();
+                    return;
+                }
+            }
             if (room.defeatPositions.Count == 0) return;
             float roll = Random.Range(0, 1000000) * 0.0001f;
             float lowestHealth = 1f;
@@ -29,6 +39,32 @@ namespace MouseKeeper
                         SpawnVial(cashVialPrefab, RewardPosition(defeatPosition), false, true);
             }
             room.defeatPositions.Clear();
+        }
+
+        void SpawnLayoutRewards(Room room, RoomLayout layout)
+        {
+            if (layout.rewards == null) return;
+            foreach (RoomLayout.Reward reward in layout.rewards)
+            {
+                if (reward == null || Random.value >= reward.chance) continue;
+                Vector3 world = reward.position != null ? reward.position.position : layout.transform.position;
+                Vector3 local = room.root.transform.InverseTransformPoint(world);
+                switch (reward.kind)
+                {
+                    case RoomLayout.RewardKind.Health:
+                        SpawnVial(healthVialPrefab, local, true, true);
+                        break;
+                    case RoomLayout.RewardKind.Money:
+                        SpawnVial(cashVialPrefab, local, false, true);
+                        break;
+                    case RoomLayout.RewardKind.Weapon:
+                        if (reward.weapon != null) SpawnWeaponPickup(new WeaponInstance(reward.weapon), world);
+                        break;
+                    case RoomLayout.RewardKind.Passive:
+                        if (reward.passive != null) SpawnPassivePickup(reward.passive, local);
+                        break;
+                }
+            }
         }
 
         void SpawnBossReward(Vector3 defeatPosition)

@@ -125,6 +125,7 @@ namespace MouseKeeper
 
         void OnDestroy()
         {
+            RemoveFloorNavigation();
             floorGore?.Dispose();
             foreach (Object asset in generatedAssets)
                 if (asset != null) Destroy(asset);

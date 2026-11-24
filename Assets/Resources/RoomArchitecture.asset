@@ -25,3 +25,4 @@ MonoBehaviour:
   - {fileID: 919132149155446097, guid: 5dbfceaf690621c44bab0e88eff801b7, type: 3}
   arch: {fileID: 919132149155446097, guid: 47a6c970ae5c6f944852f4beace77c1a, type: 3}
   door: {fileID: 919132149155446097, guid: f7ee708f91689404a9b4c277856e5f25, type: 3}
+  lamp: {fileID: 6744531513723721158, guid: c67c3218816b7324d9f3868f41639afd, type: 3}

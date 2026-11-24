@@ -82,6 +82,7 @@ namespace MouseKeeper
                 currentRoom = room;
                 BuildRoom(room);
             }
+            BuildFloorNavigation();
             currentRoom = null;
             EnterRoom(rooms[0], -1);
         }

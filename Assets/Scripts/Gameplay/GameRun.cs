@@ -7,6 +7,7 @@ namespace MouseKeeper
     public sealed partial class GameRun : MonoBehaviour
     {
         public GameObject roomPrefab;
+        RoomLayout[] roomLayouts;
         public EnemySpawnPool enemySpawnPool;
         public WeaponDefinition[] weapons;
         public PassiveItemDefinition[] passiveItems;
@@ -122,6 +123,7 @@ namespace MouseKeeper
             roomWidth = Mathf.Max(8f, roomWidth);
             roomDepth = Mathf.Max(8f, roomDepth);
             if (roomArchitecture == null) roomArchitecture = Resources.Load<RoomArchitecture>("RoomArchitecture");
+            roomLayouts = Resources.LoadAll<RoomLayout>("RoomLayouts");
             if (roomArchitecture == null || !roomArchitecture.IsValid())
             {
                 Debug.LogError("Room architecture is missing required wall, window, pillar, arch or door models.", this);
@@ -174,6 +176,7 @@ namespace MouseKeeper
                 currentRoom = room;
                 BuildRoom(room);
             }
+            BuildFloorNavigation();
             currentRoom = null;
             if (IntroSequence.ConsumeArrival()) StartCoroutine(EnterFromIntro(rooms[0]));
             else EnterRoom(rooms[0], -1);
