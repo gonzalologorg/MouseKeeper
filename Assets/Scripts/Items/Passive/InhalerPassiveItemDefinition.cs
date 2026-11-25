@@ -46,7 +46,7 @@ namespace MouseKeeper
             {
                 yield return new WaitForSeconds(1f);
                 if (player.Dead) break;
-                player.Heal(heal);
+                player.Heal(heal, source: "inhaler");
             }
             player.SetEmergencySpeedMultiplier(1f);
             active = false;

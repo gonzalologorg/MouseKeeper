@@ -13,11 +13,18 @@ MonoBehaviour:
   m_Name: Shotgun
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.ShotgunWeaponDefinition
   displayName: Escopeta
+  tags: 1
   icon: {fileID: 21300000, guid: 831e940e11614e98a120d60de8e041c0, type: 3}
+  modelPrefab: {fileID: 0}
+  modelMesh: {fileID: 0}
+  modelMaterial: {fileID: 0}
+  modelPosition: {x: 0, y: 0, z: 0}
+  modelRotation: {x: 0, y: 0, z: 0}
   modelScale: {x: 1, y: 1, z: 1}
-  maxEnergy: 3
-  damage: 10
+  maxEnergy: 4
+  damage: 15
   attackInterval: 0.9
-  range: 10
+  range: 12
   primaryCost: 1
+  secondaryCost: 4
   reloadDuration: 2

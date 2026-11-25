@@ -6,6 +6,8 @@ namespace MouseKeeper
     [CreateAssetMenu(menuName = "MouseKeeper/Weapons/Special/Shotgun")]
     public sealed class ShotgunWeaponDefinition : SpecialWeaponDefinition
     {
+        public override bool ApplyDamageScaling => false;
+        public override float EstimatedDps => Mathf.Max(0f, damage) / Mathf.Max(0.05f, attackInterval);
         protected override void PerformPrimaryAttack(PlayerController player, WeaponInstance weapon)
         {
             var hits = new HashSet<MouseEnemy>();
@@ -15,7 +17,7 @@ namespace MouseKeeper
                 Vector3 direction = Quaternion.Euler(0f, i * 12f, 0f) * player.AimDirection;
                 if (!Physics.Raycast(origin, direction, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore)) continue;
                 MouseEnemy mouse = hit.collider.GetComponentInParent<MouseEnemy>();
-                if (mouse != null && hits.Add(mouse)) mouse.TakeDamage(10f, player, weapon, false, hit.point, origin);
+                if (mouse != null && hits.Add(mouse)) mouse.TakeDamage(damage, player, weapon, false, hit.point, origin);
             }
         }
     }

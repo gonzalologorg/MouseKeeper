@@ -93,7 +93,7 @@ namespace MouseKeeper
                 {
                     bardUsed = true;
                     foreach (PlayerController agent in agents)
-                        if (agent != null && !agent.Dead) { agent.Heal(agent.MaxHealth * 0.3f); agent.SetBardBuff(true); }
+                        if (agent != null && !agent.Dead) { agent.Heal(agent.MaxHealth * 0.3f, source: "bard", healer: bard); agent.SetBardBuff(true); }
                     StartCoroutine(BardSphere(currentRoom));
                 }
                 if (!locksmithUsed && locksmith != null && previousRoom != null && previousRoomDirection >= 0)
@@ -106,12 +106,17 @@ namespace MouseKeeper
             if (!currentRoom.cleared || medic == null || medic.Money <= 0) return;
             medicCooldown -= Time.deltaTime;
             if (medicCooldown > 0f) return;
-            foreach (PlayerController patient in agents)
+            PlayerController patient = null;
+            float lowest = 0.7f;
+            foreach (PlayerController candidate in agents)
             {
-                if (patient == null || patient.Dead || patient == medic || patient.Health >= patient.MaxHealth * 0.6f) continue;
-                if (medic.TrySpendMoney(1)) { patient.Heal(2f); medic.ChangeKarma(1); medicCooldown = 0.5f; }
-                break;
+                if (candidate == null || candidate.Dead || candidate == medic || candidate.MaxHealth <= 0f) continue;
+                float fraction = candidate.Health / candidate.MaxHealth;
+                if (fraction >= lowest) continue;
+                lowest = fraction;
+                patient = candidate;
             }
+            if (patient != null && medic.TrySpendMoney(1)) { patient.Heal(patient.MaxHealth * 0.05f, false, "medic", medic); medic.ChangeKarma(1); medicCooldown = 0.5f; }
         }
 
         IEnumerator BardSphere(Room room)
@@ -146,6 +151,8 @@ namespace MouseKeeper
 
         IEnumerator EscapeRoom()
         {
+            if (balanceRoom != null) balanceRoom.escaped = true;
+            BalanceLog("room_escape", null, null, "locksmith", "");
             Room abandoned = currentRoom;
             Room destination = previousRoom;
             int direction = previousRoomDirection;
@@ -179,7 +186,7 @@ namespace MouseKeeper
             }
             for (int i = 0; i < agents.Count; i++)
                 if (agents[i] != null && !agents[i].Dead && !agents[i].ReachedDestination)
-                    RescueTransitionAgent(agents[i], doorway + forward * 2f + side * ((i - 1) * 0.8f));
+                    RescueTransitionAgent(agents[i], doorway + forward * 2f + side * ((i - 1) * 0.8f), "escape");
             if (exit != null) exit.SetOpen(false);
             if (entrance != null) entrance.SetOpen(false);
             yield return new WaitForSeconds(0.55f);
@@ -194,6 +201,8 @@ namespace MouseKeeper
             abandoned.cleared = false;
             abandoned.visited = false;
             abandoned.boss = null;
+            abandoned.bossDamageThresholds = 0;
+            abandoned.pendingBossRats = 0;
             abandoned.bossDefeated = false;
             currentRoom = destination;
             previousRoom = null;

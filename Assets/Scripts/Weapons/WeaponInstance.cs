@@ -12,6 +12,9 @@ namespace MouseKeeper
         float reloadRemaining;
         float attackSpeed = 1f;
         float reloadSpeed = 1f;
+        PlayerController owner;
+
+        internal void SetOwner(PlayerController value) => owner = value;
 
         public WeaponInstance(WeaponDefinition definition, float attackSpeed = 1f, int agility = 5)
         {
@@ -32,6 +35,7 @@ namespace MouseKeeper
             if (cooldown > 0f || IsReloading || Energy < cost) return false;
             Energy -= cost;
             cooldown = Mathf.Max(0f, interval) / attackSpeed;
+            if (owner != null) owner.RecordBalanceAttack(this, cost);
             return true;
         }
 

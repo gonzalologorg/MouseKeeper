@@ -25,16 +25,17 @@ namespace MouseKeeper
 #if UNITY_EDITOR
         Label debugStatus;
 #endif
-        readonly Texture2D[] statIcons = new Texture2D[6];
-        static readonly string[] StatAssets = { "Bravery", "Accuracy", "Agility", "Distrust", "Greed", "Teamwork" };
-        static readonly string[] StatLabels = { "Valor", "Puntería", "Agilidad", "Desconfianza", "Avaricia", "Equipo" };
+        readonly Texture2D[] statIcons = new Texture2D[7];
+        static readonly string[] StatAssets = { "Bravery", "Accuracy", "Agility", "Distrust", "Greed", "Teamwork", "Luck" };
+        static readonly string[] StatLabels = { "Valor", "Puntería", "Agilidad", "Desconfianza", "Avaricia", "Equipo", "Suerte" };
         static readonly string[] StatDescriptions = {
             "Reduce el miedo al estar herido.",
             "Reduce la dispersión, sobre todo a distancia.",
             "Mejora la recarga y reduce la fatiga.",
             "Favorece el uso de compañeros como protección.",
             "Aumenta la prioridad de botín y la pérdida de karma.",
-            "Favorece el rescate de compañeros."
+            "Favorece el rescate de compañeros.",
+            "Aumenta la probabilidad de impacto crítico hasta un 25%."
         };
 
         void Start()
@@ -162,7 +163,12 @@ namespace MouseKeeper
             Button launch = root.Q<Button>("launch-button");
             Button restart = root.Q<Button>("restart-button");
             Button language = root.Q<Button>("language-button");
-            if (resume == null || abandon == null || random == null || launch == null || restart == null || language == null) return false;
+            Button autoRun = root.Q<Button>("auto-run-button");
+            if (resume == null || abandon == null || random == null || launch == null || restart == null || language == null || autoRun == null) return false;
+            autoRun.clicked += () => {
+                if (ExpeditionSession.StartAutoRun(out error)) SceneManager.LoadScene("SampleScene");
+                else Refresh();
+            };
             language.clicked += () => {
                 GameText.SetEnglish(!GameText.English);
                 root.Q<VisualElement>("stat-guide").Clear();
@@ -193,7 +199,7 @@ namespace MouseKeeper
         }
 
         static int[] Stats(AgentProfile profile) =>
-            new[] { profile.bravery, profile.accuracy, profile.agility, profile.distrust, profile.greed, profile.teamwork };
+            new[] { profile.bravery, profile.accuracy, profile.agility, profile.distrust, profile.greed, profile.teamwork, Mathf.Clamp(profile.luck, 1, 10) };
 
         static void SetStars(VisualElement container, AgentProfile profile)
         {
@@ -275,6 +281,7 @@ namespace MouseKeeper
             lastResult.text = string.IsNullOrEmpty(data.lastResultKey) ? data.lastResult ?? "" :
                 data.lastResultValues == null ? GameText.Get(data.lastResultKey) :
                 GameText.Format(data.lastResultKey, Array.ConvertAll(data.lastResultValues, value => (object)value));
+            if (data.hasLastScore) lastResult.text += " | " + GameText.Format("Puntaje: {0}", data.lastScore.ToString("0.#"));
             lastResult.style.display = string.IsNullOrEmpty(lastResult.text) ? DisplayStyle.None : DisplayStyle.Flex;
             Label errorLabel = root.Q<Label>("error");
             errorLabel.text = GameText.Get(error ?? "");
@@ -516,7 +523,7 @@ namespace MouseKeeper
             menu.AddItem(GameText.Get("Fácil · 0.5x"), false, () => Launch(ExpeditionDifficulty.Easy));
             menu.AddItem(GameText.Get("Normal · 1.0x"), false, () => Launch(ExpeditionDifficulty.Normal));
             menu.AddItem(GameText.Get("Difícil · 1.5x (+1 sala)"), false, () => Launch(ExpeditionDifficulty.Hard));
-            menu.AddItem(GameText.Get("Enjambre · 2.5x (+2 salas)"), false, () => Launch(ExpeditionDifficulty.Swarm));
+            menu.AddItem(GameText.Get("Enjambre · 2x enemigos (+2 salas)"), false, () => Launch(ExpeditionDifficulty.Swarm));
             menu.DropDown(button.worldBound, button, DropdownMenuSizeMode.Content);
         }
 

@@ -2,10 +2,19 @@ using UnityEngine;
 
 namespace MouseKeeper
 {
+    [System.Flags]
+    public enum WeaponTags
+    {
+        None = 0, DPS = 1 << 0, Utility = 1 << 1, Support = 1 << 2, Melee = 1 << 3,
+        Electric = 1 << 4, Poison = 1 << 5, Fire = 1 << 6, Bleeding = 1 << 7
+    }
+
     [CreateAssetMenu(menuName = "MouseKeeper/Weapon")]
     public class WeaponDefinition : ScriptableObject
     {
         public string displayName = "Mouse Blaster";
+        [Tooltip("Propiedades combinables usadas por las especialidades al elegir armas.")]
+        public WeaponTags tags = WeaponTags.DPS;
         public Sprite icon;
         [Tooltip("Visual-only model or prefab used by the agent and the pickup. Model Mesh takes precedence when assigned.")]
         public GameObject modelPrefab;
@@ -27,6 +36,8 @@ namespace MouseKeeper
 
         public virtual bool HoldPrimaryAttack => true;
         public virtual bool UsesMeleeDistance => false;
+        public virtual bool ApplyDamageScaling => true;
+        public virtual float EstimatedDps => Mathf.Max(0f, damage) * (ApplyDamageScaling ? 0.7f : 1f) / Mathf.Max(0.05f, attackInterval);
 
         public virtual void PrimaryAttack(PlayerController player, WeaponInstance weapon)
         {

@@ -10,12 +10,12 @@ namespace MouseKeeper
     [Serializable]
     public sealed class AgentProgress
     {
-        public int bravery, accuracy, agility, distrust, greed, teamwork;
+        public int bravery, accuracy, agility, distrust, greed, teamwork, luck;
         public int pending;
         public int expeditionsCompleted;
         public int ratsKilled;
         public int moneyCollected;
-        public int Total => bravery + accuracy + agility + distrust + greed + teamwork;
+        public int Total => bravery + accuracy + agility + distrust + greed + teamwork + luck;
         public int Level => Mathf.Clamp(expeditionsCompleted, 1, AgentProfile.MaxLevel);
         public int RemainingUpgrades => Mathf.Max(0, AgentProfile.MaxLevel - 1 - Total);
     }
@@ -40,6 +40,8 @@ namespace MouseKeeper
         public string lastResult;
         public string lastResultKey;
         public int[] lastResultValues;
+        public double lastScore;
+        public bool hasLastScore;
     }
 
     public static class ExpeditionSession
@@ -50,6 +52,10 @@ namespace MouseKeeper
         const string SaveKey = "MouseKeeper.Campaign.v1";
         static ExpeditionCatalog catalog;
         static CampaignData data;
+        static CampaignData campaignBeforeAutoRun;
+        static float timeScaleBeforeAutoRun;
+        public static bool AutoRun { get; private set; }
+        public static int AutoRunNumber { get; private set; }
 
         public static ExpeditionCatalog Catalog => catalog;
         public static CampaignData Data => data;
@@ -62,6 +68,17 @@ namespace MouseKeeper
             ExpeditionDifficulty.Hard => 1.5f,
             ExpeditionDifficulty.Swarm => 2.5f,
             _ => 1f
+        };
+
+        public static float EnemyCountMultiplier(ExpeditionDifficulty difficulty) =>
+            difficulty == ExpeditionDifficulty.Swarm ? 2f : DifficultyMultiplier(difficulty);
+
+        public static float BossDifficultyMultiplier(ExpeditionDifficulty difficulty) => difficulty switch
+        {
+            ExpeditionDifficulty.Easy => 0.5f,
+            ExpeditionDifficulty.Hard => 1.25f,
+            ExpeditionDifficulty.Swarm => 1.5f,
+            _ => 0.75f
         };
 
         public static int ExtraRooms(ExpeditionDifficulty difficulty) => difficulty switch
@@ -112,6 +129,7 @@ namespace MouseKeeper
             profile.distrust += progress.distrust;
             profile.greed += progress.greed;
             profile.teamwork += progress.teamwork;
+            profile.luck = Mathf.Clamp(profile.luck, 1, 10) + progress.luck;
             profile.healthMultiplier = 1f + 0.1f * progress.Total;
             profile.speedMultiplier = 1f + 0.05f * progress.Total;
             profile.Level = progress.Level;
@@ -124,7 +142,7 @@ namespace MouseKeeper
             return !campaign.active && Losses(campaign) < LossLimit && CanSelect(campaign, source, index) &&
                 progress.RemainingUpgrades > 0 && (progress.pending > 0 || campaign.upgradePoints > 0) &&
                 (profile.bravery < 10 || profile.accuracy < 10 || profile.agility < 10 ||
-                    profile.distrust < 10 || profile.greed < 10 || profile.teamwork < 10);
+                    profile.distrust < 10 || profile.greed < 10 || profile.teamwork < 10 || profile.luck < 10);
         }
 
         public static bool Upgrade(CampaignData campaign, ExpeditionCatalog source, int index, int skill)
@@ -141,6 +159,7 @@ namespace MouseKeeper
                 case 3: if (profile.distrust >= 10) return false; progress.distrust++; break;
                 case 4: if (profile.greed >= 10) return false; progress.greed++; break;
                 case 5: if (profile.teamwork >= 10) return false; progress.teamwork++; break;
+                case 6: if (profile.luck >= 10) return false; progress.luck++; break;
                 default: return false;
             }
             if (progress.pending > 0) progress.pending--;
@@ -271,7 +290,7 @@ namespace MouseKeeper
             if (campaign.upgradePoints < 0 || campaign.progressionVersion < 0 || campaign.progressionVersion > 2) return false;
             foreach (AgentProgress progress in campaign.progress)
                 if (progress == null || progress.pending < 0 || progress.bravery < 0 || progress.accuracy < 0 ||
-                    progress.agility < 0 || progress.distrust < 0 || progress.greed < 0 || progress.teamwork < 0 ||
+                    progress.agility < 0 || progress.distrust < 0 || progress.greed < 0 || progress.teamwork < 0 || progress.luck < 0 ||
                     progress.expeditionsCompleted < 0 || progress.ratsKilled < 0 || progress.moneyCollected < 0) return false;
             string[] agentKeys = Array.ConvertAll(source.agents, agent => agent.name);
             string[] weaponKeys = Array.ConvertAll(source.weapons, weapon => weapon.name);
@@ -410,6 +429,60 @@ namespace MouseKeeper
 
         public static bool Launch(out string error) => Launch(ExpeditionDifficulty.Normal, out error);
 
+        public static bool StartAutoRun(out string error)
+        {
+            if (AutoRun || !Initialize()) { error = "No se pudo iniciar Auto-run."; return false; }
+            campaignBeforeAutoRun = data;
+            timeScaleBeforeAutoRun = Time.timeScale;
+            AutoRun = true;
+            AutoRunNumber = 0;
+            NextAutoRun();
+            error = null;
+            return true;
+        }
+
+        public static void NextAutoRun()
+        {
+            if (!AutoRun) return;
+            data = NewCampaign(catalog);
+            var availableAgents = new List<int>();
+            var availableSpecialties = new List<Specialty> { Specialty.Dps, Specialty.Medic, Specialty.Tank, Specialty.Locksmith, Specialty.Bard };
+            var availableWeapons = new List<int>();
+            for (int i = 0; i < catalog.weapons.Length; i++) availableWeapons.Add(i);
+            for (int i = 0; i < catalog.agents.Length; i++) availableAgents.Add(i);
+            for (int i = 0; i < SquadSize; i++)
+            {
+                int agent = UnityEngine.Random.Range(0, availableAgents.Count);
+                data.selectedAgents[i] = availableAgents[agent];
+                availableAgents.RemoveAt(agent);
+                if (availableWeapons.Count == 0)
+                    for (int w = 0; w < catalog.weapons.Length; w++) availableWeapons.Add(w);
+                int weapon = UnityEngine.Random.Range(0, availableWeapons.Count);
+                data.selectedWeapons[i] = availableWeapons[weapon];
+                availableWeapons.RemoveAt(weapon);
+                int specialty = UnityEngine.Random.Range(0, availableSpecialties.Count);
+                data.specialties[i] = availableSpecialties[specialty];
+                availableSpecialties.RemoveAt(specialty);
+            }
+            bool hasDamage = false;
+            foreach (int index in data.selectedWeapons)
+                if ((catalog.weapons[index].tags & WeaponTags.DPS) != 0) hasDamage = true;
+            if (!hasDamage) data.selectedWeapons[UnityEngine.Random.Range(0, SquadSize)] = Array.IndexOf(catalog.weapons, catalog.basicWeapon);
+            data.difficulty = (ExpeditionDifficulty)UnityEngine.Random.Range(0, 4);
+            data.active = true;
+            AutoRunNumber++;
+            Time.timeScale = 3f;
+        }
+
+        public static void StopAutoRun()
+        {
+            if (!AutoRun) return;
+            data = campaignBeforeAutoRun;
+            campaignBeforeAutoRun = null;
+            AutoRun = false;
+            Time.timeScale = timeScaleBeforeAutoRun;
+        }
+
         public static bool Launch(ExpeditionDifficulty difficulty, out string error)
         {
             if (data.active) { error = "Ya hay una expedición en curso."; return false; }
@@ -428,14 +501,16 @@ namespace MouseKeeper
             data.lastResult = null;
             data.lastResultKey = null;
             data.lastResultValues = null;
+            data.hasLastScore = false;
             Save();
             return true;
         }
 
-        public static void Settle(float floorCredit, PlayerController[] agents, bool completed)
+        public static void Settle(float floorCredit, PlayerController[] agents, bool completed, double? score = null)
         {
             if (!Active) { Debug.LogError("No hay una expedición activa para liquidar."); return; }
             if (agents == null || agents.Length != SquadSize) { Debug.LogError("Falta el escuadrón para liquidar."); return; }
+            if (AutoRun) { data.active = false; return; }
             float progress = Mathf.Clamp(floorCredit, 0f, FloorCount) / FloorCount;
             int specialtyCount = 0;
             if (data.specialties != null) foreach (Specialty specialty in data.specialties)
@@ -478,6 +553,8 @@ namespace MouseKeeper
             data.lastResultKey = "Contrato: {0}% (${1}) | Efectivo recuperado: ${2} | Pagos: ${3} | Para ti: ${4}";
             data.lastResultValues = new[] { Mathf.RoundToInt(progress * 100f), reward, collected, paid, available };
             data.lastResult = GameText.Format(data.lastResultKey, Array.ConvertAll(data.lastResultValues, value => (object)value));
+            data.hasLastScore = score.HasValue;
+            if (score.HasValue) data.lastScore = score.Value;
             data.active = false;
             if (!GameOver) EnsureAvailableAgents(data);
             EnsureAvailableWeapons(data, catalog);
@@ -494,6 +571,7 @@ namespace MouseKeeper
                 if (index != basic) data.inventory[index]++;
             data.lastResultKey = "Expedición abandonada: agentes perdidos, equipo recuperado.";
             data.lastResultValues = null;
+            data.hasLastScore = false;
             data.lastResult = GameText.Get(data.lastResultKey);
             data.active = false;
             if (!GameOver) EnsureAvailableAgents(data);
@@ -503,6 +581,7 @@ namespace MouseKeeper
 
         public static void Save()
         {
+            if (AutoRun) return;
             PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(data));
             PlayerPrefs.Save();
         }

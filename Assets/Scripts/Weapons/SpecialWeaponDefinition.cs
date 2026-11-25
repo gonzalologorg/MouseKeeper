@@ -18,7 +18,8 @@ namespace MouseKeeper
 
         protected Vector3 GetDeploymentPosition(PlayerController player)
         {
-            return player.ClampToCurrentRoom(player.transform.position + player.AimDirection *
+            Vector3 horizontalAim = Vector3.ProjectOnPlane(player.AimDirection, Vector3.up).normalized;
+            return player.ClampToCurrentRoom(player.transform.position + horizontalAim *
                 Mathf.Clamp(player.TargetDistance, 1f, Mathf.Min(4f, range)));
         }
 
@@ -45,7 +46,7 @@ namespace MouseKeeper
             direction = mouse.transform.position - player.transform.position;
             direction.y = 0f;
             return mouse.IsTargetable && direction.magnitude <= range &&
-                Vector3.Angle(player.AimDirection, direction) <= 45f;
+                Vector3.Angle(Vector3.ProjectOnPlane(player.AimDirection, Vector3.up), direction) <= 45f;
         }
     }
 }

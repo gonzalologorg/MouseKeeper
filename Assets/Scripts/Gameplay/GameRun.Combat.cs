@@ -5,9 +5,13 @@ namespace MouseKeeper
 {
     public sealed partial class GameRun
     {
+        static double MouseScore(bool boss, MouseEnemy.MouseVariant variant, int generation) =>
+            boss ? 100 : variant == MouseEnemy.MouseVariant.Normal ? 20 : variant == MouseEnemy.MouseVariant.Mushroom ? (generation > 0 ? 12.5 : 25) : 50;
+        static bool MushroomCanSplit(int generation, float roll) => generation < 3 && (generation == 0 || roll < 0.5f);
         public void SplitMouse(MouseEnemy parent)
         {
             if (currentRoom == null || parent == null || parent.Preset == null || parent.SplitGeneration >= 3) return;
+            if (parent.SplitGeneration > 0 && !MushroomCanSplit(parent.SplitGeneration, Random.value)) return;
             Room room = currentRoom;
             Vector3 origin = parent.transform.position;
             int offspringCount = room == bossRoom ? BossOffspringCount(room) : 2;
@@ -26,6 +30,8 @@ namespace MouseKeeper
             var cloud = new GameObject("Poison Cloud");
             cloud.transform.SetParent(currentRoom.root.transform, true);
             cloud.transform.position = origin + Vector3.up * 0.4f;
+            cloud.AddComponent<PoisonHazard>().Initialize(origin, radius);
+            HazardRadiusIndicator.Create(cloud.transform, cloud.transform, radius, -0.36f, null);
             var particles = cloud.AddComponent<ParticleSystem>();
             particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             var main = particles.main;
@@ -58,7 +64,7 @@ namespace MouseKeeper
                     Vector3 offset = agent.transform.position - origin;
                     offset.y = 0f;
                     if (offset.sqrMagnitude <= radius * radius)
-                        agent.TakeDamage(damagePerSecond * interval, sourcePosition: origin);
+                        agent.TakeDamage(damagePerSecond * interval, sourcePosition: origin, damageSource: "poison_cloud");
                 }
             }
             if (cloud != null) Destroy(cloud);
@@ -90,16 +96,19 @@ namespace MouseKeeper
                 Vector3 offset = agent.transform.position - origin;
                 offset.y = 0f;
                 if (offset.sqrMagnitude <= radius * radius)
-                    agent.TakeDamage(damage, mouse, sourcePosition: origin);
+                    agent.TakeDamage(damage, mouse, sourcePosition: origin, damageSource: "explosion");
             }
         }
 
         public void MouseDefeated(MouseEnemy mouse)
         {
+            miceDefeated++;
+            ChangeScore(MouseScore(mouse == currentRoom.boss, mouse.Variant, mouse.SplitGeneration));
             ShakeCameraOnDeath();
             if (focusedMouse == mouse) focusedMouse = null;
             if (fallbackFocus == mouse) fallbackFocus = null;
-            currentRoom.defeatPositions.Add(currentRoom.root.transform.InverseTransformPoint(mouse.transform.position));
+            if (mouse.Variant != MouseEnemy.MouseVariant.Mushroom)
+                currentRoom.defeatPositions.Add(currentRoom.root.transform.InverseTransformPoint(mouse.transform.position));
             currentRoom.enemies = Mathf.Max(0, currentRoom.enemies - 1);
             if (mouse == currentRoom.boss)
             {
@@ -107,7 +116,8 @@ namespace MouseKeeper
                 BossDialogue();
                 if (levelIndex < ExpeditionSession.FloorCount - 1)
                 {
-                    SpawnBossReward(currentRoom.root.transform.InverseTransformPoint(mouse.transform.position));
+                    if (mouse.Variant != MouseEnemy.MouseVariant.Mushroom)
+                        SpawnBossReward(currentRoom.root.transform.InverseTransformPoint(mouse.transform.position));
                     SpawnVent(currentRoom);
                 }
                 UpdateDoors(currentRoom);
@@ -120,6 +130,8 @@ namespace MouseKeeper
         {
             if (room.cleared) return;
             room.cleared = true;
+            BalanceLog("room_cleared", null, null, "", "", room.enemies);
+            ChangeScore(25);
             ClearBardBuff();
             SpawnRoomRewards(room);
             PlayerController weakest = null;
@@ -127,7 +139,7 @@ namespace MouseKeeper
                 if (agent != null && !agent.Dead &&
                     (weakest == null || agent.Health / agent.MaxHealth < weakest.Health / weakest.MaxHealth))
                     weakest = agent;
-            if (weakest != null && weakest.Health < weakest.MaxHealth) weakest.Heal(weakest.MaxHealth * 0.05f);
+            if (weakest != null && weakest.Health < weakest.MaxHealth) weakest.Heal(weakest.MaxHealth * 0.05f, source: "room_clear");
             foreach (PlayerController agent in agents)
                 if (agent != null && !agent.Dead && agent.Dialogue != null)
                     agent.Dialogue.Speak(DialogueEvent.RoomCleared, 0.2f);
@@ -180,11 +192,82 @@ namespace MouseKeeper
                 mouse.TakeDamage(amount, attacker, weapon);
         }
 
-        public void ShowDamage(Vector3 position, float amount, bool isPlayer)
+        public void ShowDamage(Vector3 position, float amount, bool isPlayer, bool critical = false)
         {
             if (isPlayer && hexBackground != null) hexBackground.Flash();
-            damageIndicators.Show(position, amount, isPlayer);
+            damageIndicators.Show(position, amount, isPlayer, critical);
         }
 
+    }
+
+    sealed class PoisonHazard : MonoBehaviour
+    {
+        public Vector3 Origin { get; private set; }
+        public float Radius { get; private set; }
+        public void Initialize(Vector3 origin, float radius) { Origin = origin; Radius = radius; }
+    }
+
+    // World-space radius stays accurate even if the enemy or its model is scaled.
+    sealed class HazardRadiusIndicator : MonoBehaviour
+    {
+        const int Segments = 64;
+        Transform target;
+        MouseEnemy enemy;
+        LineRenderer line;
+        Material material;
+        float radius, heightOffset;
+
+        public static void Create(Transform parent, Transform target, float radius, float heightOffset, MouseEnemy enemy)
+        {
+            var indicator = new GameObject("Hazard radius");
+            indicator.transform.SetParent(parent, false);
+            var display = indicator.AddComponent<HazardRadiusIndicator>();
+            display.target = target;
+            display.enemy = enemy;
+            display.radius = radius;
+            display.heightOffset = heightOffset;
+            display.line = indicator.AddComponent<LineRenderer>();
+            display.line.useWorldSpace = true;
+            display.line.loop = true;
+            display.line.positionCount = Segments;
+            display.line.startWidth = display.line.endWidth = 0.12f;
+            display.line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            display.line.receiveShadows = false;
+            Shader shader = Shader.Find("Universal Render Pipeline/Unlit");
+            display.material = shader != null ? new Material(shader) : new Material(PrimitiveMaterial.Shared);
+            display.line.sharedMaterial = display.material;
+            display.LateUpdate();
+        }
+
+        void LateUpdate()
+        {
+            if (target == null || enemy != null && enemy.IsDefeated)
+            {
+                line.enabled = false;
+                return;
+            }
+            Vector3 center = target.position;
+            if (enemy != null)
+            {
+                CharacterController controller = enemy.GetComponent<CharacterController>();
+                if (controller != null && controller.enabled) center.y = controller.bounds.min.y;
+            }
+            center.y += heightOffset;
+            for (int i = 0; i < Segments; i++)
+            {
+                float angle = i * (2f * Mathf.PI / Segments);
+                line.SetPosition(i, center + new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius));
+            }
+            float pulse = 0.35f + 0.65f * (0.5f + 0.5f * Mathf.Sin(Time.time * 8f));
+            Color red = new Color(pulse, 0.025f * pulse, 0.025f * pulse, 1f);
+            if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", red);
+            else if (material.HasProperty("_Color")) material.SetColor("_Color", red);
+        }
+
+        void OnDestroy()
+        {
+            if (material == null) return;
+            if (Application.isPlaying) Destroy(material); else DestroyImmediate(material);
+        }
     }
 }

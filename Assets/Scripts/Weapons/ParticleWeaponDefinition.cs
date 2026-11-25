@@ -14,6 +14,12 @@ namespace MouseKeeper
             GameObject particle = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             particle.name = "Weapon Particle";
             particle.GetComponent<Renderer>().sharedMaterial = PrimitiveMaterial.Shared;
+            if (this is FoamWeaponDefinition)
+            {
+                var tint = new MaterialPropertyBlock();
+                tint.SetColor("_BaseColor", new Color(0.65f, 0.9f, 1f));
+                particle.GetComponent<Renderer>().SetPropertyBlock(tint);
+            }
             particle.transform.SetParent(player.CurrentRoom, true);
             particle.transform.position = player.transform.position + Vector3.up * 0.65f + player.AimDirection * 0.6f;
             particle.transform.localScale = Vector3.one * 0.2f;

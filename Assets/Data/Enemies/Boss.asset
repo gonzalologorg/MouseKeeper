@@ -15,7 +15,12 @@ MonoBehaviour:
   prefab: {fileID: 0}
   controllerTemplate: {fileID: 0}
   behavior: 0
-  maxHealth: 250
+  maxHealth: 200
   attackDamage: 12
   attackInterval: 1
   movementSpeed: 3
+  explosionDamage: 15
+  explosionRadius: 3
+  poisonDamagePerSecond: 10
+  poisonDuration: 5
+  poisonRadius: 3

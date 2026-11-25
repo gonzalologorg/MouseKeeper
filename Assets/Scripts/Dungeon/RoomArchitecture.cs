@@ -11,6 +11,8 @@ namespace MouseKeeper
         public GameObject arch;
         public GameObject door;
         public GameObject lamp;
+        [Tooltip("Prefabs de decoración de pasillo orientados hacia el sur; se elige uno por tramo.")]
+        public GameObject[] corridorPrefabs;
 
         public bool IsValid()
         {

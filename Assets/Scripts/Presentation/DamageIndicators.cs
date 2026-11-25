@@ -67,7 +67,7 @@ namespace MouseKeeper
             damageOverlay.enabled = true;
         }
 
-        public void Show(Vector3 origin, float amount, bool isPlayer)
+        public void Show(Vector3 origin, float amount, bool isPlayer, bool critical = false)
         {
             if (canvas == null || viewCamera == null)
             {
@@ -92,7 +92,7 @@ namespace MouseKeeper
             Outline outline = root.GetComponent<Outline>();
             outline.effectColor = Color.black;
             outline.effectDistance = new Vector2(2f, -2f);
-            indicators.Add(new Indicator { text = text, origin = origin, color = isPlayer ? Color.red : Color.white });
+            indicators.Add(new Indicator { text = text, origin = origin, color = critical ? Color.red : Color.white });
         }
 
         void LateUpdate()

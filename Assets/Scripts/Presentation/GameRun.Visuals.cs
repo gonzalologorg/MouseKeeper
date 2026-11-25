@@ -125,6 +125,7 @@ namespace MouseKeeper
 
         void OnDestroy()
         {
+            FinishBalanceTelemetry("interrupted");
             RemoveFloorNavigation();
             floorGore?.Dispose();
             foreach (Object asset in generatedAssets)

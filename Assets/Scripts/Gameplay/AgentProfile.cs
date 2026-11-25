@@ -29,6 +29,7 @@ namespace MouseKeeper
         public int greed = 1;
         [Range(1, 10)]
         public int teamwork = 5;
+        [Range(1, 10)] public int luck = 1;
 
         [NonSerialized] public float healthMultiplier = 1f;
         [NonSerialized] public float speedMultiplier = 1f;

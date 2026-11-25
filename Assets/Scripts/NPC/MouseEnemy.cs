@@ -54,9 +54,22 @@ namespace MouseKeeper
         CharacterController targetController;
         Animator animator;
         HitFlash hitFlash;
+        float slowRemaining;
+        float slowFraction;
+        float bleedUntil;
+        float explosiveWarningUntil;
+        float freezeRemaining;
+        float initialTankAttention = 3f;
+        bool targetsTankInitially;
+        float CurrentMovementSpeed => movementSpeed * (slowRemaining > 0f ? 1f - slowFraction : 1f);
+        public float SlowFraction => slowRemaining > 0f ? slowFraction : 0f;
+        public bool IsBleeding => Time.time < bleedUntil;
+        public bool ExplosiveThreat => variant == MouseVariant.Explosive && !defeated && Time.time < explosiveWarningUntil;
         public bool IsTargetable => !defeated;
         public bool IsDefeated => defeated;
+        public float Health => Mathf.Max(0f, health);
         public MouseVariant Variant => variant;
+        public Vector3 AimPoint => controller != null ? controller.bounds.center : transform.position;
 
         public void SetBehavior(MouseVariant value) => variant = value;
 
@@ -75,7 +88,7 @@ namespace MouseKeeper
         public void InitializeOffspring(MouseEnemy parent)
         {
             SplitGeneration = parent.SplitGeneration + 1;
-            maxHealth = parent.maxHealth * 0.67f;
+            maxHealth = parent.maxHealth * 0.65f;
             health = maxHealth;
             movementSpeed = parent.movementSpeed * (1f + 0.2f * SplitGeneration) /
                 (1f + 0.2f * parent.SplitGeneration);
@@ -102,6 +115,7 @@ namespace MouseKeeper
         public void Initialize(GameRun gameRun, PlayerController target, Vector3 hideSpot, int level)
         {
             run = gameRun;
+            targetsTankInitially = Random.value < 0.5f;
             player = target;
             controller = GetComponent<CharacterController>();
             navigation = gameObject.AddComponent<NavigationMotor>();
@@ -115,6 +129,10 @@ namespace MouseKeeper
             attackDamage *= 0.4f * (1f + 0.05f * depth);
             health = maxHealth;
             jumpCooldown = 0f;
+            if (variant == MouseVariant.Explosive && explosionRadius > 0f)
+                HazardRadiusIndicator.Create(transform, transform, explosionRadius, 0.04f, this);
+            else if (variant == MouseVariant.Poison && poisonRadius > 0f)
+                HazardRadiusIndicator.Create(transform, transform, poisonRadius, 0.04f, this);
         }
 
         void AddSelectionCollider()
@@ -153,8 +171,20 @@ namespace MouseKeeper
                 TakeDamage(health, supportingAgent);
                 return;
             }
+            // Jumping mice follow their own arc; all other states must keep
+            // falling even when navigation has no path or the mouse is idle.
+            if (jumpElapsed < 0f) controller.Move(Vector3.down * 2f * Time.deltaTime);
             if (run.Finished || run.IsTransitioning)
             {
+                UpdateAnimation(0f, false);
+                return;
+            }
+            slowRemaining = Mathf.Max(0f, slowRemaining - Time.deltaTime);
+            initialTankAttention = Mathf.Max(0f, initialTankAttention - Time.deltaTime);
+            if (freezeRemaining > 0f)
+            {
+                freezeRemaining = Mathf.Max(0f, freezeRemaining - Time.deltaTime);
+                if (freezeRemaining <= 0f) hitFlash.SetFrozen(false);
                 UpdateAnimation(0f, false);
                 return;
             }
@@ -162,13 +192,13 @@ namespace MouseKeeper
             {
                 float step = Mathf.Min(Time.deltaTime, retreatRemaining);
                 retreatRemaining -= step;
-                controller.Move(retreatDirection * movementSpeed * step + Vector3.down * 2f * step);
-                UpdateAnimation(movementSpeed, false);
+                controller.Move(retreatDirection * CurrentMovementSpeed * step);
+                UpdateAnimation(CurrentMovementSpeed, false);
                 return;
             }
             if (variant == MouseVariant.Jumping)
             {
-                UpdateJump(Time.deltaTime);
+                UpdateJump(Time.deltaTime * (slowRemaining > 0f ? 1f - slowFraction : 1f));
                 return;
             }
             CheeseDecoy cheese = NearestCheese();
@@ -189,16 +219,16 @@ namespace MouseKeeper
                 }
                 else
                 {
-                    if (navigation.DirectionTo(cheese.transform.position, movementSpeed, out Vector3 cheeseDirection))
+                    if (navigation.DirectionTo(cheese.transform.position, CurrentMovementSpeed, out Vector3 cheeseDirection))
                     {
                         transform.rotation = Quaternion.LookRotation(cheeseDirection);
-                        controller.Move(cheeseDirection * movementSpeed * Time.deltaTime + Vector3.down * 2f * Time.deltaTime);
+                        controller.Move(cheeseDirection * CurrentMovementSpeed * Time.deltaTime);
                     }
-                    UpdateAnimation(movementSpeed, false);
+                    UpdateAnimation(CurrentMovementSpeed, false);
                 }
                 return;
             }
-            player = run.NearestAgent(transform.position);
+            player = SelectAgentTarget();
             if (player != null) targetController = player.GetComponent<CharacterController>();
             if (player == null || player.Dead)
             {
@@ -232,10 +262,10 @@ namespace MouseKeeper
             Vector3 previousPosition = transform.position;
             if (direction.sqrMagnitude > 0.1f)
             {
-                if (navigation.DirectionTo(target, movementSpeed, out direction))
+                if (navigation.DirectionTo(target, CurrentMovementSpeed, out direction))
                 {
                     transform.rotation = Quaternion.LookRotation(direction);
-                    controller.Move(direction * movementSpeed * dt + Vector3.down * 2f * dt);
+                    controller.Move(direction * CurrentMovementSpeed * dt);
                 }
             }
             Vector3 displacement = transform.position - previousPosition;
@@ -251,11 +281,10 @@ namespace MouseKeeper
                 UpdateAnimation(0f, false);
                 if (jumpCooldown > 0f)
                 {
-                    controller.Move(Vector3.down * 2f * dt);
                     return;
                 }
                 jumpCheese = NearestCheese();
-                jumpTarget = jumpCheese == null ? run.NearestAgent(transform.position, previousJumpTarget) : null;
+                jumpTarget = jumpCheese == null ? SelectAgentTarget(previousJumpTarget) : null;
                 if (jumpCheese == null && jumpTarget == null) jumpTarget = run.NearestAgent(transform.position);
                 if (jumpCheese == null && jumpTarget == null) return;
                 if (jumpTarget != null) previousJumpTarget = jumpTarget;
@@ -319,6 +348,18 @@ namespace MouseKeeper
             return nearest;
         }
 
+        PlayerController SelectAgentTarget(PlayerController exclude = null)
+        {
+            PlayerController tank = run.NearestTank(transform.position);
+            if (targetsTankInitially && tank != null && initialTankAttention > 0f) return tank;
+            PlayerController nearest = run.NearestAgent(transform.position, exclude) ?? run.NearestAgent(transform.position);
+            if (!targetsTankInitially) return nearest;
+            if (tank == null || nearest == null || tank == nearest) return nearest ?? tank;
+            float tankDistance = Vector3.Distance(tank.transform.position, transform.position);
+            float nearestDistance = Vector3.Distance(nearest.transform.position, transform.position);
+            return tankDistance <= nearestDistance + 2f ? tank : nearest;
+        }
+
         public void RetreatFrom(Vector3 source, float duration)
         {
             if (defeated || duration <= 0f) return;
@@ -340,25 +381,32 @@ namespace MouseKeeper
             animator.SetBool(FleeingParameter, isFleeing && speed == 0f);
         }
 
-        public void TakeDamage(float amount, PlayerController attacker, WeaponInstance weapon = null, bool scaleWeaponDamage = true, Vector3? impact = null, Vector3? sourcePosition = null)
+        public void TakeDamage(float amount, PlayerController attacker, WeaponInstance weapon = null, bool scaleWeaponDamage = true, Vector3? impact = null, Vector3? sourcePosition = null, bool roundDamage = true, string damageSource = "passive_or_status", WeaponInstance attributionWeapon = null)
         {
             if (defeated || amount <= 0f) return;
-            amount = Mathf.Ceil(amount * (weapon != null && attacker != null ? attacker.WeaponDamageMultiplier : 1f) *
-                (weapon != null && scaleWeaponDamage ? 0.7f : 1f));
+            if (variant == MouseVariant.Explosive) explosiveWarningUntil = Time.time + 2.5f;
+            bool critical = weapon != null && attacker != null && Random.value < PlayerController.CriticalChance(attacker.Profile.luck);
+            amount *= (weapon != null && attacker != null ? attacker.WeaponDamageMultiplier : 1f) *
+                (weapon != null && scaleWeaponDamage && weapon.Definition.ApplyDamageScaling ? 0.7f : 1f) * (critical ? 1.5f : 1f);
+            if (roundDamage) amount = Mathf.Ceil(amount);
+            float previousHealth = Mathf.Max(0f, health);
             health -= amount;
+            run.QueueBossDamageSpawns(this, health);
+            run.RecordBalanceEnemyDamage(attacker, this, weapon, attributionWeapon, Mathf.Min(amount, previousHealth), Mathf.Max(0f, amount - previousHealth), critical, damageSource);
             Bounds bounds = controller.bounds;
             Vector3 source = sourcePosition ?? (attacker != null ? attacker.transform.position : bounds.center - transform.forward);
             run.ShowBlood(impact ?? GameRun.BloodImpact(bounds, source), bounds.center - source);
+            if (critical && health > 0f) attacker.NotifyCriticalHit(this);
             hitFlash.Flash();
             Vector3 indicatorPosition = transform.position;
             indicatorPosition.y = controller.bounds.max.y + 0.2f;
-            run.ShowDamage(indicatorPosition, amount, false);
+            run.ShowDamage(indicatorPosition, amount, false, critical);
             bool killed = health <= 0f;
             if (killed) defeated = true;
             if (weapon != null) weapon.Definition.OnDamage(attacker, weapon, this, amount);
             if (killed)
             {
-                attacker.NotifyMouseKill(this);
+                attacker.NotifyMouseKill(this, weapon ?? attributionWeapon);
                 if (variant == MouseVariant.Explosive)
                     run.ExplodeMouse(this, explosionRadius, explosionDamage);
                 else if (variant == MouseVariant.Poison)
@@ -421,8 +469,51 @@ namespace MouseKeeper
         public void Push(Vector3 direction, float distance)
         {
             if (defeated || controller == null || distance <= 0f) return;
+            run?.RecordBalanceStatus(this, "push", distance);
             direction.y = 0f;
             if (direction.sqrMagnitude > 0f) controller.Move(direction.normalized * distance);
+        }
+
+        public void ApplySlow(float duration)
+        {
+            if (slowRemaining <= 0f) slowFraction = 0f;
+            slowFraction = Mathf.Min(0.8f, slowFraction + 0.2f);
+            slowRemaining = Mathf.Max(slowRemaining, duration);
+            run?.RecordBalanceStatus(this, "slow", duration);
+        }
+
+        public void ApplyFreeze(float duration)
+        {
+            if (defeated || duration <= 0f) return;
+            freezeRemaining = Mathf.Max(freezeRemaining, duration);
+            run?.RecordBalanceStatus(this, "freeze", duration);
+            hitFlash.SetFrozen(true);
+        }
+
+        public void ApplyDamageOverTime(PlayerController source, float totalDamage, int seconds, string damageSource = "damage_over_time", WeaponInstance attributionWeapon = null)
+        {
+            if (!defeated && source != null && totalDamage > 0f && seconds > 0)
+            {
+                run?.RecordBalanceStatus(this, damageSource, seconds);
+                StartCoroutine(DamageOverTime(source, totalDamage, seconds, damageSource, attributionWeapon));
+            }
+        }
+
+        IEnumerator DamageOverTime(PlayerController source, float totalDamage, int seconds, string damageSource, WeaponInstance attributionWeapon)
+        {
+            for (int i = 0; i < seconds && !defeated; i++)
+            {
+                yield return new WaitForSeconds(1f);
+                if (defeated || source == null || run.Finished || run.CurrentRoom != transform.parent) yield break;
+                TakeDamage(totalDamage / seconds, source, roundDamage: false, damageSource: damageSource, attributionWeapon: attributionWeapon);
+            }
+        }
+
+        public void ApplyBleed(PlayerController source, WeaponInstance weapon = null)
+        {
+            if (IsBleeding || defeated || source == null) return;
+            bleedUntil = Time.time + 3f;
+            ApplyDamageOverTime(source, maxHealth * 0.3f, 3, "bleed", weapon);
         }
     }
 }

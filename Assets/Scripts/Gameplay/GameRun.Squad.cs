@@ -20,6 +20,7 @@ namespace MouseKeeper
 
         public int EnemyCount => currentRoom != null ? currentRoom.enemies : 0;
         public SquadFormation Formation { get; private set; } = SquadFormation.Nearest;
+        public bool IsDoorTravel => IsTransitioning || pendingCorridorDestination != null;
         public bool HasFocusTarget => currentRoom != null && currentRoom.root != null &&
             Formation == SquadFormation.Focus &&
             focusedMouse != null && focusedMouse.IsTargetable &&
@@ -65,6 +66,19 @@ namespace MouseKeeper
             foreach (PlayerController agent in agents)
             {
                 if (agent == null || agent.Dead || agent == exclude) continue;
+                float candidate = (agent.transform.position - position).sqrMagnitude;
+                if (candidate < distance) { distance = candidate; best = agent; }
+            }
+            return best;
+        }
+
+        public PlayerController NearestTank(Vector3 position)
+        {
+            PlayerController best = null;
+            float distance = float.PositiveInfinity;
+            foreach (PlayerController agent in agents)
+            {
+                if (agent == null || agent.Dead || agent.Specialty != Specialty.Tank) continue;
                 float candidate = (agent.transform.position - position).sqrMagnitude;
                 if (candidate < distance) { distance = candidate; best = agent; }
             }
@@ -198,6 +212,41 @@ namespace MouseKeeper
             return best;
         }
 
+        public bool TryAvoidHazard(PlayerController agent, out Vector3 destination)
+        {
+            destination = agent.transform.position;
+            if (currentRoom == null || currentRoom.root == null || agent.Dead) return false;
+            Vector3 position = agent.transform.position, away = Vector3.zero;
+            foreach (PoisonHazard hazard in currentRoom.root.GetComponentsInChildren<PoisonHazard>())
+            {
+                Vector3 delta = position - hazard.Origin; delta.y = 0f;
+                if (delta.sqrMagnitude < (hazard.Radius + 0.8f) * (hazard.Radius + 0.8f))
+                    away += (delta.sqrMagnitude > 0.001f ? delta.normalized : Vector3.right) * (hazard.Radius + 1.5f - delta.magnitude);
+            }
+            foreach (MouseEnemy mouse in currentRoom.root.GetComponentsInChildren<MouseEnemy>())
+            {
+                if (!mouse.ExplosiveThreat) continue;
+                Vector3 delta = position - mouse.transform.position; delta.y = 0f;
+                if (delta.sqrMagnitude < (mouse.explosionRadius + 0.8f) * (mouse.explosionRadius + 0.8f))
+                    away += (delta.sqrMagnitude > 0.001f ? delta.normalized : Vector3.left) * (mouse.explosionRadius + 1.5f - delta.magnitude);
+            }
+            if (away.sqrMagnitude < 0.001f) return false;
+            float distance = Mathf.Clamp(away.magnitude + 1f, 2f, 6f);
+            var path = new UnityEngine.AI.NavMeshPath();
+            if (!UnityEngine.AI.NavMesh.SamplePosition(position, out var start, 1.5f, UnityEngine.AI.NavMesh.AllAreas)) return false;
+            for (int i = 0; i < 7; i++)
+            {
+                float angle = i == 0 ? 0f : ((i + 1) / 2) * (i % 2 == 1 ? 30f : -30f);
+                Vector3 point = ClampToCurrentRoom(position + Quaternion.Euler(0f, angle, 0f) * away.normalized * distance);
+                if (!UnityEngine.AI.NavMesh.SamplePosition(point, out var hit, 1f, UnityEngine.AI.NavMesh.AllAreas) ||
+                    !UnityEngine.AI.NavMesh.CalculatePath(start.position, hit.position, UnityEngine.AI.NavMesh.AllAreas, path) ||
+                    path.status != UnityEngine.AI.NavMeshPathStatus.PathComplete) continue;
+                destination = hit.position;
+                return true;
+            }
+            return false;
+        }
+
         public MouseEnemy SelectTarget(PlayerController agent)
         {
             if (currentRoom == null || currentRoom.root == null || agent == null) return null;
@@ -214,6 +263,21 @@ namespace MouseKeeper
                     !fallbackFocus.transform.IsChildOf(currentRoom.root.transform))
                     fallbackFocus = NearestMouseToSquad();
                 return fallbackFocus;
+            }
+            WeaponInstance activeWeapon = agent.Weapons[agent.SelectedWeapon];
+            if (activeWeapon != null && (activeWeapon.Definition is RustyBladeWeaponDefinition || activeWeapon.Definition is FoamWeaponDefinition))
+            {
+                bool bleeding = activeWeapon.Definition is RustyBladeWeaponDefinition;
+                MouseEnemy untreated = null;
+                float best = float.PositiveInfinity;
+                float reach = Mathf.Max(2f, activeWeapon.Definition.range + 5f);
+                foreach (MouseEnemy mouse in currentRoom.root.GetComponentsInChildren<MouseEnemy>())
+                {
+                    if (!mouse.IsTargetable || (bleeding ? mouse.IsBleeding : mouse.SlowFraction >= 0.6f)) continue;
+                    float distance = (mouse.transform.position - agent.transform.position).sqrMagnitude;
+                    if (distance <= reach * reach && distance < best) { untreated = mouse; best = distance; }
+                }
+                if (untreated != null) return untreated;
             }
             return NearestMouse(agent.transform.position);
         }
@@ -362,7 +426,24 @@ namespace MouseKeeper
         bool EligibleForPickup(PlayerController agent, ItemPickup pickup)
         {
             return agent != null && pickup.CanPickUp(agent) && CanAffordPickup(agent, pickup) &&
-                (pickup.Kind != PickupKind.Weapon || agent.CanAutoEquip(pickup.weapon));
+                (pickup.Kind != PickupKind.Weapon || (pickup.IsEmergencyWeapon ? agent.CanAcceptEmergencyWeapon(pickup.weapon) : pickup.IsFallenWeapon
+                    ? !pickup.IsFromFallenAgent(agent) && agent.CanUseFallenWeapon(pickup.weapon) && CanAdoptWeapon(agent, pickup.weapon)
+                    : agent.CanAutoEquip(pickup.weapon)));
+        }
+
+        internal bool CanAdoptWeapon(PlayerController agent, WeaponInstance candidate)
+        {
+            if (agent == null || candidate == null || candidate.Definition == null) return false;
+            bool candidateDps = (candidate.Definition.tags & WeaponTags.DPS) != 0;
+            bool otherDps = false;
+            foreach (PlayerController other in agents)
+            {
+                if (other == null || other == agent || other.Dead || other.Weapons[0] == null) continue;
+                if (other.Weapons[0].Definition == candidate.Definition) return false;
+                if ((other.Weapons[0].Definition.tags & WeaponTags.DPS) != 0) otherDps = true;
+            }
+            WeaponInstance current = agent.Weapons[0];
+            return candidateDps || otherDps || current == null || (current.Definition.tags & WeaponTags.DPS) == 0;
         }
 
         bool CanAffordPickup(PlayerController buyer, ItemPickup pickup)
@@ -434,7 +515,7 @@ namespace MouseKeeper
         {
             if (currentRoom == null || pickup == null || !pickup.Available ||
                 !pickup.transform.IsChildOf(currentRoom.root.transform)) return null;
-            if (pickup.Price > 0 && pickup.Kind == PickupKind.Health)
+            if (pickup.Kind == PickupKind.Health)
             {
                 PlayerController critical = null;
                 float lowest = 0.3f;
@@ -447,9 +528,27 @@ namespace MouseKeeper
                     lowest = healthFraction;
                 }
                 if (critical != null) return critical;
+                foreach (PlayerController agent in agents)
+                    if (agent != null && agent.Specialty == Specialty.Medic && EligibleForPickup(agent, pickup))
+                        return agent;
             }
             if (pickup == orderedWeapon && weaponAssignee != null && !weaponAssignee.Dead &&
                 weaponAssignee.Money >= pickup.Price) return weaponAssignee;
+            if (pickup.IsFallenWeapon)
+            {
+                PlayerController recipient = null;
+                float bestGain = float.NegativeInfinity, nearest = float.PositiveInfinity;
+                foreach (PlayerController agent in agents)
+                {
+                    if (!EligibleForPickup(agent, pickup)) continue;
+                    WeaponInstance current = agent.Weapons[agent.SelectedWeapon];
+                    float gain = pickup.weapon.Definition.EstimatedDps - (current != null ? current.Definition.EstimatedDps : 0f);
+                    float distance = (agent.transform.position - pickup.transform.position).sqrMagnitude;
+                    if (recipient == null || gain > bestGain || gain == bestGain && distance < nearest)
+                    { recipient = agent; bestGain = gain; nearest = distance; }
+                }
+                return recipient;
+            }
             int highest = int.MinValue;
             foreach (PlayerController agent in agents)
                 if (EligibleForPickup(agent, pickup)) highest = Mathf.Max(highest, agent.Karma);
@@ -460,6 +559,8 @@ namespace MouseKeeper
             {
                 if (!EligibleForPickup(agent, pickup)) continue;
                 long score = agent.Karma;
+                if (pickup.Kind == PickupKind.Weapon && pickup.weapon != null)
+                    score += Mathf.RoundToInt(agent.WeaponPreference(pickup.weapon.Definition) * 10f);
                 if (agent.Karma < highest && !greedClaims.Contains(agent))
                     score += Mathf.FloorToInt(Mathf.Clamp(agent.Profile.greed, 1, 10) * 2f);
                 float distance = (agent.transform.position - pickup.transform.position).sqrMagnitude;
@@ -477,6 +578,7 @@ namespace MouseKeeper
         public bool IsGreedClaim(ItemPickup pickup, PlayerController collector)
         {
             if (pickup == orderedWeapon || PickupOwner(pickup) != collector) return false;
+            if (pickup.Kind == PickupKind.Health && collector.Specialty == Specialty.Medic) return false;
             foreach (PlayerController agent in agents)
                 if (EligibleForPickup(agent, pickup) && agent.Karma > collector.Karma) return true;
             return false;
@@ -538,7 +640,7 @@ namespace MouseKeeper
             foreach (ItemPickup pickup in currentRoom.root.GetComponentsInChildren<ItemPickup>())
             {
                 if (PickupOwner(pickup) != agent) continue;
-                int priority = pickup.Kind == PickupKind.Money && (agent.Karma > 7 || IsLastSurvivingAgent(agent)) ? 2 :
+                int priority = pickup.Kind == PickupKind.Money && (ExpeditionSession.AutoRun || agent.Karma > 7 || IsLastSurvivingAgent(agent)) ? 2 :
                     pickup.Kind == PickupKind.Weapon && agent.Karma > 3 ? 1 : 0;
                 float distance = (pickup.transform.position - agent.transform.position).sqrMagnitude;
                 if (priority > bestPriority || priority == bestPriority && distance < bestDistance)
@@ -547,6 +649,20 @@ namespace MouseKeeper
                     bestDistance = distance;
                     best = pickup;
                 }
+            }
+            return best;
+        }
+
+        internal ItemPickup SelectFallenWeapon(PlayerController agent)
+        {
+            if (currentRoom == null || currentRoom.root == null) return null;
+            ItemPickup best = null;
+            float nearest = float.PositiveInfinity;
+            foreach (ItemPickup pickup in currentRoom.root.GetComponentsInChildren<ItemPickup>())
+            {
+                if ((!pickup.IsFallenWeapon && !pickup.IsEmergencyWeapon) || PickupOwner(pickup) != agent) continue;
+                float distance = (pickup.transform.position - agent.transform.position).sqrMagnitude;
+                if (distance < nearest) { best = pickup; nearest = distance; }
             }
             return best;
         }
@@ -565,6 +681,26 @@ namespace MouseKeeper
 
         public void AgentDied(PlayerController agent)
         {
+            RecordBalanceDeath(agent);
+            var survivors = new List<PlayerController>();
+            foreach (PlayerController other in agents)
+                if (other != null && other != agent && !other.Dead) survivors.Add(other);
+            if (survivors.Count > 0)
+            {
+                int money = agent.ReleaseMoneyOnDeath();
+                for (int i = 0; i < survivors.Count; i++)
+                {
+                    int share = money / survivors.Count + (i < money % survivors.Count ? 1 : 0);
+                    if (share <= 0) continue;
+                    survivors[i].AddMoney(share);
+                    RecordBalanceTransfer(agent, survivors[i], share);
+                }
+            }
+            if (currentRoom != null && currentRoom.root != null)
+            {
+                WeaponInstance weapon = agent.ReleaseWeaponOnDeath();
+                if (weapon != null) SpawnWeaponPickup(weapon, agent.transform.position).MarkFallenWeapon(agent);
+            }
             ShakeCameraOnDeath();
             anyAgentDied = true;
             ResetAgentProgress(agent);
@@ -623,6 +759,7 @@ namespace MouseKeeper
                 Quaternion.Euler(0f, index * 120f, 0f) * Vector3.forward);
             position.y = survivor.transform.position.y;
             agent.ReturnToSquad(position);
+            RecordBalanceRevival(agent, survivor, "squad_revival");
             CharacterController revived = agent.GetComponent<CharacterController>();
             foreach (PlayerController other in agents)
                 if (other != agent && !other.Dead)

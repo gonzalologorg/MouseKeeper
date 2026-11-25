@@ -5,6 +5,8 @@ namespace MouseKeeper
     [CreateAssetMenu(menuName = "MouseKeeper/Weapons/Special/Whip")]
     public sealed class WhipWeaponDefinition : SpecialWeaponDefinition
     {
+        public WhipWeaponDefinition() { tags = WeaponTags.Utility | WeaponTags.Support | WeaponTags.Melee; }
+        [Min(0f)] public float pushDistance = 4f;
         public override bool UsesMeleeDistance => true;
 
         protected override float GetPrimaryInterval(PlayerController player)
@@ -27,6 +29,7 @@ namespace MouseKeeper
 
             if (closest == null) return;
             closest.TakeDamage(damage, player, weapon);
+            closest.Push(closest.transform.position - player.transform.position, pushDistance);
             closest.RetreatFrom(player.transform.position, 2f);
         }
     }

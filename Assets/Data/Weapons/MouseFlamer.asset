@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: MouseFlamer
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.ParticleWeaponDefinition
   displayName: Mouse Flamer
+  tags: 65
   icon: {fileID: 21300000, guid: b03d437b480a248408b000c30956089b, type: 3}
   modelPrefab: {fileID: 919132149155446097, guid: 127199767f186414499b999550eafd91, type: 3}
   modelPosition: {x: 0, y: 0, z: 0}

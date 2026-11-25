@@ -1,6 +1,8 @@
 using MouseKeeper;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.ProBuilder;
 
 public sealed class RoomLayoutEditorWindow : EditorWindow
 {
@@ -24,6 +26,48 @@ public sealed class RoomLayoutEditorWindow : EditorWindow
         EditorGUILayout.LabelField("Proporción", Widths[widthIndex] + " : " + Depths[depthIndex]);
         if (GUILayout.Button("Crear prefab de habitación")) CreateRoom(Widths[widthIndex], Depths[depthIndex], doorSide);
         EditorGUILayout.HelpBox("El generador usa la plantilla cuando el tamaño y el lado de la puerta coinciden. Configura los enemigos y las recompensas en Room Layout; -1 conserva la cantidad normal de enemigos.", MessageType.None);
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("Objetos ProBuilder", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox("Abre una plantilla de habitación en modo Prefab y añade objetos editables a Contenido. La estructura es solo una referencia y se reemplaza durante el juego.", MessageType.Info);
+        PrefabStage stage = PrefabStageUtility.GetCurrentPrefabStage();
+        RoomLayout editingLayout = stage != null ? stage.prefabContentsRoot.GetComponent<RoomLayout>() : null;
+        using (new EditorGUI.DisabledScope(editingLayout == null))
+        {
+            if (GUILayout.Button("Añadir caja")) AddProBuilderObject(editingLayout, "Caja", new Vector3(1f, 1f, 1f));
+            if (GUILayout.Button("Añadir viga")) AddProBuilderObject(editingLayout, "Viga", new Vector3(0.5f, 3f, 0.5f));
+            if (GUILayout.Button("Añadir estantería")) AddProBuilderObject(editingLayout, "Estantería", new Vector3(3f, 2f, 0.7f));
+            if (GUILayout.Button("Añadir mesada")) AddProBuilderObject(editingLayout, "Mesada", new Vector3(2.5f, 1f, 1f));
+        }
+    }
+
+    static void AddProBuilderObject(RoomLayout layout, string objectName, Vector3 size)
+    {
+        Transform contents = layout.transform.Find("Contenido");
+        if (contents == null)
+        {
+            var container = new GameObject("Contenido");
+            Undo.RegisterCreatedObjectUndo(container, "Crear contenido de habitación");
+            Undo.SetTransformParent(container.transform, layout.transform, "Crear contenido de habitación");
+            container.transform.localPosition = Vector3.zero;
+            contents = container.transform;
+        }
+
+        ProBuilderMesh mesh = ShapeGenerator.GenerateCube(PivotLocation.Center, size);
+        GameObject item = mesh.gameObject;
+        item.name = objectName;
+        StageUtility.PlaceGameObjectInCurrentStage(item);
+        Undo.RegisterCreatedObjectUndo(item, "Añadir " + objectName);
+        Undo.SetTransformParent(item.transform, contents, "Añadir " + objectName);
+        item.transform.localPosition = new Vector3(0f, size.y * 0.5f, 0f);
+        item.transform.localRotation = Quaternion.identity;
+        item.transform.localScale = Vector3.one;
+        Material material = Resources.Load<Material>("PrimitiveMaterial");
+        if (material != null) mesh.GetComponent<Renderer>().sharedMaterial = material;
+        MeshCollider collider = item.GetComponent<MeshCollider>();
+        if (collider == null) collider = item.AddComponent<MeshCollider>();
+        collider.sharedMesh = mesh.GetComponent<MeshFilter>().sharedMesh;
+        Selection.activeGameObject = item;
+        EditorSceneManager.MarkSceneDirty(item.scene);
     }
 
     static void CreateRoom(float width, float depth, RoomLayout.DoorSide doorSide)

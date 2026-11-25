@@ -5,6 +5,7 @@ namespace MouseKeeper
     [CreateAssetMenu(menuName = "MouseKeeper/Weapons/Special/GasGrenade")]
     public sealed class GasGrenadeWeaponDefinition : SpecialWeaponDefinition
     {
+        public override float EstimatedDps => 60f / Mathf.Max(0.05f, attackInterval);
         protected override void PerformPrimaryAttack(PlayerController player, WeaponInstance weapon)
         {
             Vector3 landing = GetDeploymentPosition(player);

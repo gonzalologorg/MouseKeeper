@@ -13,6 +13,19 @@ using Object = UnityEngine.Object;
 
 public sealed class SquadRecoveryTests
 {
+    [Serializable] sealed class BalanceTestReport
+    {
+        public string outcome;
+        public float duration_game_seconds, duration_real_seconds;
+        public BalanceTestAgent[] agents;
+        public BalanceTestRoom[] rooms;
+    }
+    [Serializable] sealed class BalanceTestAgent
+    {
+        public int attacks, initial_money, money_spent;
+        public float healing_received;
+    }
+    [Serializable] sealed class BalanceTestRoom { public float duration_game_seconds, duration_real_seconds; }
     const BindingFlags PrivateInstance = BindingFlags.Instance | BindingFlags.NonPublic;
     GameObject runObject;
     GameObject cameraObject;
@@ -64,6 +77,161 @@ public sealed class SquadRecoveryTests
         var agents = (List<PlayerController>)typeof(GameRun).GetField("agents", PrivateInstance).GetValue(run);
         agents.Add(agent);
         return agent;
+    }
+
+    [Test]
+    public void FallenAgentSharesMoneyAndDropsOffensiveWeaponForBiggestUpgrade()
+    {
+        object room = CreateRoom();
+        GameObject roomRoot = (GameObject)room.GetType().GetField("root").GetValue(room);
+        PlayerController fallen = CreateAgent("Fallen", Vector3.zero, new AgentProfile());
+        PlayerController first = CreateAgent("First", Vector3.right, new AgentProfile());
+        PlayerController second = CreateAgent("Second", Vector3.right * 2f, new AgentProfile());
+        var strong = ScriptableObject.CreateInstance<WeaponDefinition>();
+        try
+        {
+            strong.tags = WeaponTags.DPS;
+            strong.damage = weapon.damage * 3f;
+            fallen.Equip(new WeaponInstance(strong));
+            fallen.AddMoney(5);
+            fallen.DebugKill();
+            Assert.That(first.Money, Is.EqualTo(3));
+            Assert.That(second.Money, Is.EqualTo(2));
+            Assert.That(fallen.Money, Is.Zero);
+            Assert.That(fallen.Weapons[0], Is.Null);
+            ItemPickup dropped = Array.Find(roomRoot.GetComponentsInChildren<ItemPickup>(), item => item.IsFallenWeapon);
+            Assert.That(dropped, Is.Not.Null);
+            Assert.That(run.PickupOwner(dropped), Is.SameAs(first));
+            strong.tags |= WeaponTags.Support;
+            Assert.That(run.PickupOwner(dropped), Is.Null);
+        }
+        finally { Object.DestroyImmediate(strong); }
+    }
+
+    [Test]
+    public void BalanceReportPersistsAgentActionsAndRoomTimes()
+    {
+        string directory = System.IO.Path.Combine(Application.temporaryCachePath, "BalanceTest_" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            CreateRoom();
+            PlayerController agent = CreateAgent("Test", Vector3.zero, new AgentProfile());
+            agent.AddMoney(5);
+            typeof(GameRun).GetMethod("InitializeBalanceTelemetry", PrivateInstance).Invoke(run, new object[] { directory });
+            typeof(GameRun).GetMethod("TickBalanceTelemetry", PrivateInstance).Invoke(run, new object[] { 2.5f, 2f });
+            typeof(PlayerController).GetProperty("Health").SetValue(agent, agent.MaxHealth - 10f);
+            agent.Heal(4f, source: "test");
+            Assert.That(agent.TrySpendMoney(2), Is.True);
+            Assert.That(agent.Weapons[0].TrySpend(1f, 0.5f), Is.True);
+            typeof(GameRun).GetMethod("FinishBalanceTelemetry", PrivateInstance).Invoke(run, new object[] { "completed" });
+            string path = (string)typeof(GameRun).GetField("balancePath", PrivateInstance).GetValue(run);
+            Assert.That(System.IO.File.Exists(path), Is.True);
+            string json = System.IO.File.ReadAllText(path);
+            BalanceTestReport report = JsonUtility.FromJson<BalanceTestReport>(json);
+            Assert.That(report.outcome, Is.EqualTo("completed"));
+            Assert.That(report.duration_game_seconds, Is.EqualTo(2.5f));
+            Assert.That(report.duration_real_seconds, Is.EqualTo(2f));
+            Assert.That(report.agents[0].initial_money, Is.EqualTo(5));
+            Assert.That(report.agents[0].money_spent, Is.EqualTo(2));
+            Assert.That(report.agents[0].attacks, Is.EqualTo(1));
+            Assert.That(report.agents[0].healing_received, Is.EqualTo(4f));
+            Assert.That(report.rooms[0].duration_game_seconds, Is.EqualTo(2.5f));
+            Assert.That(report.rooms[0].duration_real_seconds, Is.EqualTo(2f));
+            StringAssert.Contains("\"weapon_activation\"", json);
+            StringAssert.Contains("\"heal\"", json);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(directory)) System.IO.Directory.Delete(directory, true);
+        }
+    }
+
+    [Test]
+    public void AutoRunPrioritizesMoneyOverOtherEligibleLoot()
+    {
+        object room = CreateRoom();
+        room.GetType().GetField("cleared").SetValue(room, true);
+        GameObject roomRoot = (GameObject)room.GetType().GetField("root").GetValue(room);
+        PlayerController agent = CreateAgent("Collector", Vector3.zero, new AgentProfile());
+        CreateAgent("Teammate", Vector3.left * 3f, new AgentProfile());
+        typeof(PlayerController).GetProperty("Karma").SetValue(agent, 5);
+        var moneyObject = new GameObject("Cash");
+        moneyObject.transform.SetParent(roomRoot.transform);
+        moneyObject.transform.position = Vector3.right * 5f;
+        moneyObject.AddComponent<MoneyVial>();
+        ItemPickup cash = moneyObject.AddComponent<ItemPickup>();
+        var weaponObject = new GameObject("Better weapon");
+        weaponObject.transform.SetParent(roomRoot.transform);
+        WeaponDefinition better = ScriptableObject.CreateInstance<WeaponDefinition>();
+        better.damage = weapon.damage * 4f;
+        ItemPickup weaponPickup = weaponObject.AddComponent<ItemPickup>();
+        weaponPickup.weapon = new WeaponInstance(better);
+        FieldInfo autoRun = typeof(ExpeditionSession).GetField("<AutoRun>k__BackingField", BindingFlags.Static | BindingFlags.NonPublic);
+        bool previous = (bool)autoRun.GetValue(null);
+        try
+        {
+            autoRun.SetValue(null, false);
+            Assert.That(run.SelectPickup(agent), Is.SameAs(weaponPickup));
+            autoRun.SetValue(null, true);
+            Assert.That(run.SelectPickup(agent), Is.SameAs(cash));
+        }
+        finally { autoRun.SetValue(null, previous); Object.DestroyImmediate(better); }
+    }
+
+    [Test]
+    public void RecoveryCanKeepOrCancelTheAgentsMoveOrder()
+    {
+        PlayerController agent = CreateAgent("Stuck", Vector3.zero, new AgentProfile());
+        agent.SetDestination(Vector3.right * 5f);
+        MethodInfo recover = typeof(PlayerController).GetMethod("RecoverNavigationPosition", PrivateInstance);
+        recover.Invoke(agent, new object[] { Vector3.right, false });
+        Assert.That(agent.transform.position, Is.EqualTo(Vector3.right));
+        Assert.That(agent.ReachedDestination, Is.False);
+        recover.Invoke(agent, new object[] { Vector3.right * 2f, true });
+        Assert.That(agent.ReachedDestination, Is.True);
+    }
+
+    [Test]
+    public void MedicGetsHealthPickupUnlessAnAllyIsCritical()
+    {
+        object room = CreateRoom();
+        GameObject roomRoot = (GameObject)room.GetType().GetField("root").GetValue(room);
+        PlayerController medic = CreateAgent("Medic", Vector3.zero, new AgentProfile());
+        PlayerController ally = CreateAgent("Ally", Vector3.right, new AgentProfile());
+        medic.SetSpecialty(Specialty.Medic);
+        typeof(PlayerController).GetProperty("Health").SetValue(medic, medic.MaxHealth * 0.6f);
+        typeof(PlayerController).GetProperty("Health").SetValue(ally, ally.MaxHealth * 0.5f);
+        var healthObject = new GameObject("Health");
+        objects.Add(healthObject);
+        healthObject.transform.SetParent(roomRoot.transform);
+        healthObject.AddComponent<HealthVial>();
+        ItemPickup pickup = healthObject.AddComponent<ItemPickup>();
+        typeof(ItemPickup).GetMethod("Awake", PrivateInstance).Invoke(pickup, null);
+        Assert.That(run.PickupOwner(pickup), Is.SameAs(medic));
+        typeof(PlayerController).GetProperty("Health").SetValue(ally, ally.MaxHealth * 0.2f);
+        Assert.That(run.PickupOwner(pickup), Is.SameAs(ally));
+    }
+
+    [Test]
+    public void PurchaseAndPickupScoresAreAddedTogether()
+    {
+        FieldInfo score = typeof(GameRun).GetField("score", PrivateInstance);
+        Assert.That(score.GetValue(run), Is.EqualTo(1000));
+        run.RecordPickupScore(PickupKind.Passive, 6);
+        run.RecordPickupScore(PickupKind.Weapon, 0);
+        run.RecordPickupScore(PickupKind.Health, 3);
+        Assert.That(score.GetValue(run), Is.EqualTo(1170));
+    }
+
+    [Test]
+    public void CriticalDamageNumbersAreRedAndNormalNumbersAreWhite()
+    {
+        indicators.Show(Vector3.zero, 10f, false);
+        indicators.Show(Vector3.zero, 15f, false, true);
+        var numbers = (System.Collections.IList)typeof(DamageIndicators).GetField("indicators", PrivateInstance).GetValue(indicators);
+        FieldInfo color = numbers[0].GetType().GetField("color");
+        Assert.That(color.GetValue(numbers[0]), Is.EqualTo(Color.white));
+        Assert.That(color.GetValue(numbers[1]), Is.EqualTo(Color.red));
     }
 
     object CreateRoom()
@@ -503,12 +671,13 @@ public sealed class SquadRecoveryTests
         enemy.Initialize(run, agent, Vector3.zero, 1);
         Physics.SyncTransforms();
         var shotgun = ScriptableObject.CreateInstance<ShotgunWeaponDefinition>();
+        shotgun.damage = 15f;
         try
         {
             float before = (float)typeof(MouseEnemy).GetField("health", PrivateInstance).GetValue(enemy);
             shotgun.PrimaryAttack(agent, new WeaponInstance(shotgun));
             float after = (float)typeof(MouseEnemy).GetField("health", PrivateInstance).GetValue(enemy);
-            Assert.That(before - after, Is.EqualTo(10f));
+            Assert.That(before - after, Is.EqualTo(15f));
         }
         finally { Object.DestroyImmediate(shotgun); }
     }
@@ -536,7 +705,7 @@ public sealed class SquadRecoveryTests
     }
 
     [Test]
-    public void BlowerPushesWithoutDamageAndWhipRetreatsWithFixedCooldown()
+    public void BlowerPushesAndDealsDamageAndWhipRetreatsWithFixedCooldown()
     {
         CreateRoom();
         PlayerController agent = CreateAgent("Agent", Vector3.zero, new AgentProfile { speed = 4, attackSpeed = 2 });
@@ -552,10 +721,12 @@ public sealed class SquadRecoveryTests
         try
         {
             blower.range = 5f;
+            blower.damage = 10f;
+            blower.attackInterval = 0.6f;
             float initialHealth = (float)typeof(MouseEnemy).GetField("health", PrivateInstance).GetValue(enemy);
             blower.PrimaryAttack(agent, new WeaponInstance(blower, 2f));
             Assert.That(enemy.transform.position.z, Is.GreaterThan(2f));
-            Assert.That((float)typeof(MouseEnemy).GetField("health", PrivateInstance).GetValue(enemy), Is.EqualTo(initialHealth));
+            Assert.That((float)typeof(MouseEnemy).GetField("health", PrivateInstance).GetValue(enemy), Is.EqualTo(initialHealth - 3f).Within(0.001f));
 
             enemy.transform.position = Vector3.forward * 2f;
             Physics.SyncTransforms();

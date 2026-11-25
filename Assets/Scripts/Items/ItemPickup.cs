@@ -11,6 +11,12 @@ namespace MouseKeeper
         bool consumed;
         bool collectOnContact;
         bool lowestHealthOnly;
+        PlayerController fallenOwner;
+        public bool IsFallenWeapon { get; private set; }
+        public bool IsEmergencyWeapon { get; private set; }
+        internal void MarkEmergencyWeapon() { IsEmergencyWeapon = true; }
+        internal bool IsFromFallenAgent(PlayerController agent) => fallenOwner == agent;
+        internal void MarkFallenWeapon(PlayerController owner) { IsFallenWeapon = true; fallenOwner = owner; }
         int price;
         GameObject priceLabel;
         MoneyVial money;
@@ -97,9 +103,11 @@ namespace MouseKeeper
             if (!purchased && kind != PickupKind.Weapon) player.NotifyContestedPickup(this);
             if (weapon != null) player.Equip(weapon);
             else if (passive != null && !passive.ConsumeOnPickup) player.AddPassive(passive);
-            else if (health != null) player.Heal(health.amount);
+            else if (health != null) player.Heal(health.amount, source: "health_pickup");
             else if (money != null) player.CollectMoney(money.amount);
             consumed = true;
+            player.RecordBalancePickup(kind, DisplayName, price);
+            if (!IsEmergencyWeapon) player.RecordPickupScore(kind, price);
             player.NotifyLootCollected(kind, usedGreed, purchased);
             if (passive != null && passive.ConsumeOnPickup) passive.OnPickUp(player);
             if ((kind == PickupKind.Weapon || kind == PickupKind.Passive) && player.Dialogue != null)

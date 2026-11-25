@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: MouseBlaster
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.RaytraceWeaponDefinition
   displayName: Mouse Blaster
+  tags: 1
   icon: {fileID: 21300000, guid: dcd4d34e9d860194d94564f6009246d2, type: 3}
   modelPrefab: {fileID: 919132149155446097, guid: 7cd453ea8e784a847a8c823f15840f3e, type: 3}
   modelPosition: {x: 0, y: 0, z: 0}

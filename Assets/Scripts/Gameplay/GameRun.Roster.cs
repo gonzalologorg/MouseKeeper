@@ -82,6 +82,7 @@ namespace MouseKeeper
                 profile.distrust = Mathf.Clamp(profile.distrust, 1, 10);
                 profile.greed = Mathf.Clamp(profile.greed, 1, 10);
                 profile.teamwork = Mathf.Clamp(profile.teamwork, 1, 10);
+                profile.luck = Mathf.Clamp(profile.luck, 1, 10);
                 if (ExpeditionSession.Active && squad != null && squad.Length == ExpeditionSession.SquadSize)
                     profiles[i] = ExpeditionSession.Profile(ExpeditionSession.Data, ExpeditionSession.Catalog,
                         ExpeditionSession.Data.selectedAgents[i]);

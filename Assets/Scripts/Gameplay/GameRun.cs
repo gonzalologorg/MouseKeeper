@@ -45,6 +45,9 @@ namespace MouseKeeper
         string message;
         float messageUntil;
         int clearedCombatRooms;
+        int miceDefeated;
+        double score = 1000;
+        float scoreElapsed;
         int levelIndex;
         int fullyClearedFloors;
         float completedFloorCredit;
@@ -71,6 +74,9 @@ namespace MouseKeeper
             public RoomDoor exitDoor;
             public int exitDirection = -1;
             public MouseEnemy boss;
+            public int bossDamageThresholds;
+            public int pendingBossRats;
+            public Vector3 bossSpawnOrigin;
             public bool bossDefeated;
             public int enemies;
             public bool visited;
@@ -169,6 +175,7 @@ namespace MouseKeeper
                 return;
             }
             CreateSquad();
+            InitializeBalanceTelemetry();
             minimap = FindAnyObjectByType<Minimap>();
             GenerateMaze();
             foreach (Room room in rooms)
@@ -242,8 +249,10 @@ namespace MouseKeeper
                 basic.displayName = "Mouse Blaster";
                 var melee = ScriptableObject.CreateInstance<MeleeWeaponDefinition>();
                 melee.displayName = "Mouse Sweeper";
+                melee.tags = WeaponTags.DPS | WeaponTags.Melee;
                 var particles = ScriptableObject.CreateInstance<ParticleWeaponDefinition>();
                 particles.displayName = "Mouse Flamer";
+                particles.tags = WeaponTags.DPS | WeaponTags.Fire;
                 var pulse = ScriptableObject.CreateInstance<PulseWeaponDefinition>();
                 pulse.displayName = "Pulse Blaster";
                 generatedAssets.Add(basic);
@@ -280,6 +289,10 @@ namespace MouseKeeper
                 generatedAssets.Add(healthBalance);
                 passiveItems = new PassiveItemDefinition[] { shoes, roomDamage, revival, retaliation, inhaler, spikes, karmaBalance, healthBalance };
             }
+            var allPassives = new List<PassiveItemDefinition>(passiveItems);
+            foreach (ReactivePassiveItemDefinition passive in Resources.LoadAll<ReactivePassiveItemDefinition>("PassiveItems"))
+                if (passive != null && !allPassives.Contains(passive)) allPassives.Add(passive);
+            passiveItems = allPassives.ToArray();
         }
 
     }

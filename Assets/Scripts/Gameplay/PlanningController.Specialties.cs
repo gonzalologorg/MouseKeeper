@@ -13,8 +13,8 @@ namespace MouseKeeper
         static readonly string[] SpecialtyNames = { "Sin especialidad", "DPS", "Médico", "Tanque", "Cerrajero", "Bardo" };
         static readonly string[] SpecialtyDescriptions = {
             "", "+20% daño y +15% velocidad de recarga.",
-            "En exploración cura compañeros bajo 60%: 2 PV por $1 y +1 karma.",
-            "+30% vida; se coloca delante del equipo.",
+            "Regenera 1% de vida por segundo hasta 50%; cura 5% de vida máxima por $1 al compañero con menor porcentaje de vida bajo 70% en exploración.",
+            "+250% vida; atrae inicialmente a las ratas y protege al equipo.",
             "Una vez por piso, evacúa al equipo si alguien está en estado crítico.",
             "Una vez por piso, cura 30% y aumenta movimiento y ataque 25% hasta despejar."
         };

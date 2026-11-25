@@ -22,10 +22,34 @@ namespace MouseKeeper
             public Color originalEmission;
             public readonly MaterialPropertyBlock original = new MaterialPropertyBlock();
             public readonly MaterialPropertyBlock flash = new MaterialPropertyBlock();
+            public readonly MaterialPropertyBlock beforeFreeze = new MaterialPropertyBlock();
+            public bool hadFreezeOverride;
         }
 
         readonly List<Target> targets = new List<Target>();
         float remaining;
+        bool frozen;
+
+        public void SetFrozen(bool value)
+        {
+            if (frozen == value) return;
+            if (remaining > 0f) { remaining = 0f; Restore(); }
+            frozen = value;
+            foreach (Target target in targets)
+            {
+                if (target.renderer == null) continue;
+                if (value)
+                {
+                    target.renderer.GetPropertyBlock(target.beforeFreeze, target.index);
+                    target.hadFreezeOverride = !target.beforeFreeze.isEmpty;
+                    var tint = new MaterialPropertyBlock();
+                    target.renderer.GetPropertyBlock(tint, target.index);
+                    tint.SetColor(target.colorProperty, new Color(0.3f, 0.65f, 1f, 1f));
+                    target.renderer.SetPropertyBlock(tint, target.index);
+                }
+                else target.renderer.SetPropertyBlock(target.hadFreezeOverride ? target.beforeFreeze : null, target.index);
+            }
+        }
 
         void Awake()
         {

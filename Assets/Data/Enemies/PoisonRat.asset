@@ -19,8 +19,8 @@ MonoBehaviour:
   attackDamage: 6.4
   attackInterval: 1
   movementSpeed: 1.2
-  explosionDamage: 15
+  explosionDamage: 10
   explosionRadius: 3
-  poisonDamagePerSecond: 10
-  poisonDuration: 5
-  poisonRadius: 3
+  poisonDamagePerSecond: 5
+  poisonDuration: 4
+  poisonRadius: 4

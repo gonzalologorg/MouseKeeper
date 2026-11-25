@@ -95,6 +95,7 @@ namespace MouseKeeper
             Room room = ClosestCorridor(center / count);
             if (room == null || room == currentRoom) return;
             currentRoom = room;
+            TrackBalanceRoom();
             room.visited = true;
             RefreshRoomLighting();
             RefreshMinimap();

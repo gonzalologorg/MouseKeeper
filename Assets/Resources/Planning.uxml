@@ -5,6 +5,7 @@
             <ui:Label text="PLANIFICACIÓN DE EXPEDICIÓN" class="title" />
             <ui:Label name="funds" class="header-funds" />
             <ui:Label name="lives" class="header-lives" />
+            <ui:Button name="auto-run-button" text="AUTO-RUN" class="secondary-button" tooltip="Pruebas continuas con equipo y dificultad aleatorios, a velocidad x3." />
             <ui:Button name="language-button" text="ES / EN" class="language-button" />
         </ui:VisualElement>
         <ui:Label name="last-result" class="result" />

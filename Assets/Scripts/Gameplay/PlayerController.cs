@@ -36,6 +36,9 @@ namespace MouseKeeper
         Vector3 destination;
         readonly Queue<Vector3> corridorWaypoints = new Queue<Vector3>();
         bool hasDestination;
+        Vector3 doorProgressAnchor, doorProgressGoal;
+        float doorProgressSince;
+        bool monitoringDoorProgress;
         bool overcomingFear;
         bool fearTriggered;
         float fearRemaining;
@@ -47,9 +50,12 @@ namespace MouseKeeper
         AgentDialogue dialogue;
         float emotionCheck;
         float emergencySpeedMultiplier = 1f;
+        float medicRegenerationTimer;
+        public const float TankHealthMultiplier = 3.5f;
         public AgentProfile Profile => profile;
         public AgentDialogue Dialogue => dialogue;
         public bool ReachedDestination => !hasDestination;
+        internal Vector3 MoveDestination => destination;
         public bool BeingPushed => pushRemaining > 0f;
         internal bool CanAttemptRescue => !hasDestination && !BeingPushed && rescueCooldown <= 0f &&
             run.OrderedWeaponFor(this) == null;
@@ -73,7 +79,7 @@ namespace MouseKeeper
         public void SetSpecialty(Specialty specialty)
         {
             Specialty = specialty;
-            if (specialty == Specialty.Tank) { MaxHealth *= 1.3f; Health *= 1.3f; }
+            if (specialty == Specialty.Tank) { MaxHealth *= TankHealthMultiplier; Health *= TankHealthMultiplier; }
             RefreshWeaponSpeed();
         }
 
@@ -103,12 +109,15 @@ namespace MouseKeeper
             if (navigation != null) navigation.Pause();
             if (Dead || run == null || run.Finished) return;
             float dt = Time.deltaTime;
+            UpdateMedicRegeneration(dt);
             fearRemaining = Mathf.Max(0f, fearRemaining - dt);
             stamina = Mathf.Min(1f, stamina + dt * 0.04f);
             pushCooldown = Mathf.Max(0f, pushCooldown - dt);
             rescueCooldown = Mathf.Max(0f, rescueCooldown - dt);
             foreach (WeaponInstance weapon in Weapons)
                 if (weapon != null) weapon.Tick(dt, EnergyRecharge);
+            if (!run.IsTransitioning && run.EnemyCount > 0)
+                foreach (PassiveItemDefinition passive in passives.ToArray()) passive.OnCombatTick(this, dt);
             if (run.IsTransitioning)
             {
                 pushRemaining = 0f;
@@ -146,15 +155,16 @@ namespace MouseKeeper
             WeaponInstance current = null;
             if (target != null)
             {
-                Vector3 aim = target.transform.position - transform.position;
-                aim.y = 0f;
-                float distance = aim.magnitude;
+                Vector3 aim = target.AimPoint - (transform.position + Vector3.up * 0.65f);
+                Vector3 horizontalAim = aim;
+                horizontalAim.y = 0f;
+                float distance = horizontalAim.magnitude;
                 TargetDistance = distance;
-                if (distance > 0.01f)
+                if (aim.sqrMagnitude > 0.0001f)
                 {
                     float error = AimErrorDegrees(profile.accuracy, distance);
-                    AimDirection = Quaternion.Euler(0f, Random.Range(-error, error), 0f) * (aim / distance);
-                    transform.rotation = Quaternion.LookRotation(aim);
+                    AimDirection = Quaternion.Euler(0f, Random.Range(-error, error), 0f) * aim.normalized;
+                    if (distance > 0.01f) transform.rotation = Quaternion.LookRotation(horizontalAim);
                 }
                 current = ChooseWeapon(distance);
                 if (current != null)
@@ -173,6 +183,11 @@ namespace MouseKeeper
                 }
             }
             if (MoveDuringPush(dt)) return;
+            if (run.TryAvoidHazard(this, out Vector3 safePosition))
+            {
+                MoveTowards(safePosition, dt);
+                return;
+            }
             if (rescuing && TryRescueAlly(rescueAlly, rescueThreat, dt)) return;
             ItemPickup ordered = run.OrderedWeaponFor(this);
             if (!panicking && ordered != null)
@@ -183,6 +198,17 @@ namespace MouseKeeper
                 }
                 else MoveTowards(ordered.transform.position, dt);
                 return;
+            }
+            if (!panicking && !fleeing && !hasDestination)
+            {
+                ItemPickup fallenWeapon = run.SelectFallenWeapon(this);
+                if (fallenWeapon != null)
+                {
+                    if ((fallenWeapon.transform.position - transform.position).sqrMagnitude < 1.8f * 1.8f)
+                        fallenWeapon.PickUp(this);
+                    else MoveTowards(fallenWeapon.transform.position, dt);
+                    return;
+                }
             }
             if (target != null)
             {
@@ -205,6 +231,16 @@ namespace MouseKeeper
                 }
                 if (!hasDestination)
                 {
+                    if (current != null && current.Definition is TazerWeaponDefinition)
+                    {
+                        Vector3 offset = transform.position - target.transform.position;
+                        offset.y = 0f;
+                        Vector3 toward = offset.sqrMagnitude > 0.01f ? -offset.normalized : transform.forward;
+                        Vector3 direction = offset.magnitude > current.Definition.range * 0.7f ? toward :
+                            Vector3.Cross(Vector3.up, toward).normalized;
+                        MoveTowards(run.ClampToCurrentRoom(transform.position + direction * 2f), dt);
+                        return;
+                    }
                     if (run.TryProtectMedicPosition(this, out Vector3 protectionPosition))
                     {
                         Vector3 offset = protectionPosition - transform.position;
@@ -240,6 +276,17 @@ namespace MouseKeeper
                 }
             }
             if (hasDestination) MoveToDestination(dt);
+        }
+
+        internal void UpdateMedicRegeneration(float deltaTime)
+        {
+            if (Specialty != Specialty.Medic || Dead || deltaTime <= 0f) return;
+            medicRegenerationTimer += deltaTime;
+            int ticks = Mathf.FloorToInt(medicRegenerationTimer);
+            if (ticks <= 0) return;
+            medicRegenerationTimer -= ticks;
+            float recovery = Mathf.Min(Mathf.Max(0f, MaxHealth * 0.5f - Health), MaxHealth * 0.01f * ticks);
+            if (recovery > 0f) Heal(recovery, false, "medic_regeneration", this);
         }
 
         bool TryReprimandLootHoarder(float dt)
@@ -361,7 +408,11 @@ namespace MouseKeeper
             return true;
         }
 
-        internal void ChangeKarma(int amount) => Karma += amount;
+        internal void ChangeKarma(int amount)
+        {
+            Karma += amount;
+            if (amount != 0) run.RecordBalanceKarma(this, amount, Karma);
+        }
 
         WeaponInstance ChooseWeapon(float distance)
         {
@@ -400,6 +451,17 @@ namespace MouseKeeper
             hasDestination = false;
             corridorWaypoints.Clear();
             overcomingFear = false;
+        }
+
+        internal void RecoverNavigationPosition(Vector3 position, bool cancelOrder)
+        {
+            if (controller == null) return;
+            navigation?.ResetNavigation();
+            bool wasEnabled = controller.enabled;
+            controller.enabled = false;
+            transform.position = position;
+            controller.enabled = wasEnabled;
+            if (cancelOrder) CancelMoveOrder();
         }
 
         public void IssueMoveOrder(Vector3 point)
@@ -499,6 +561,24 @@ namespace MouseKeeper
 
         void MoveToDestination(float dt)
         {
+            if (hasDestination && run.IsDoorTravel)
+            {
+                if (!monitoringDoorProgress || (doorProgressGoal - destination).sqrMagnitude > 0.25f ||
+                    (doorProgressAnchor - transform.position).sqrMagnitude > 0.16f)
+                {
+                    monitoringDoorProgress = true;
+                    doorProgressAnchor = transform.position;
+                    doorProgressGoal = destination;
+                    doorProgressSince = Time.time;
+                }
+                else if (Time.time - doorProgressSince >= 2f)
+                {
+                    navigation.ReplanAfterStall();
+                    doorProgressSince = Time.time;
+                    run.RecordNavigationReplan(this);
+                }
+            }
+            else monitoringDoorProgress = false;
             Vector3 delta = destination - transform.position;
             delta.y = 0f;
             if (delta.sqrMagnitude < 0.18f * 0.18f)
@@ -546,10 +626,27 @@ namespace MouseKeeper
         public bool IsLastSurvivor => run != null && run.IsLastSurvivingAgent(this);
         public bool IsGreedClaim(ItemPickup pickup) => run.IsGreedClaim(pickup, this);
 
-        static float WeaponQuality(WeaponInstance weapon)
+        internal float WeaponPreference(WeaponDefinition definition)
         {
-            return weapon.Definition.damage / Mathf.Max(0.05f, weapon.Definition.attackInterval) *
-                Mathf.Max(1f, weapon.Definition.range);
+            if (definition == null) return 0f;
+            WeaponTags tags = definition.tags;
+            float preference = 0f;
+            if (Specialty == Specialty.Dps && (tags & WeaponTags.DPS) != 0) preference += 1.2f;
+            if ((Specialty == Specialty.Medic || Specialty == Specialty.Bard) && (tags & WeaponTags.Support) != 0) preference += 1.2f;
+            if ((Specialty == Specialty.Tank || Specialty == Specialty.Locksmith) && (tags & WeaponTags.Utility) != 0) preference += 1.2f;
+            if ((Specialty == Specialty.Medic || Specialty == Specialty.Bard || Specialty == Specialty.Locksmith) && (tags & WeaponTags.Utility) != 0) preference += 0.8f;
+            if (Specialty == Specialty.Tank && (tags & WeaponTags.Support) != 0) preference += 0.8f;
+            if (Specialty == Specialty.Tank && (tags & WeaponTags.Melee) != 0) preference += 0.4f;
+            if (Specialty == Specialty.Dps && (tags & (WeaponTags.Electric | WeaponTags.Poison | WeaponTags.Fire | WeaponTags.Bleeding)) != 0) preference += 0.2f;
+            return preference;
+        }
+
+        float WeaponQuality(WeaponInstance weapon)
+        {
+            WeaponDefinition definition = weapon.Definition;
+            float preference = WeaponPreference(definition);
+            float utilityValue = preference > 0f && (definition.tags & (WeaponTags.Utility | WeaponTags.Support)) != 0 ? 20f : 0f;
+            return (definition.EstimatedDps + utilityValue) * (1f + preference) * Mathf.Sqrt(Mathf.Max(1f, definition.range));
         }
 
         public bool WantsWeapon(WeaponInstance weapon)
@@ -559,11 +656,25 @@ namespace MouseKeeper
             return WeaponQuality(weapon) > WeaponQuality(Weapons[0]) * 1.15f;
         }
 
+        internal bool CanUseFallenWeapon(WeaponInstance candidate)
+        {
+            if (candidate == null || candidate.Definition == null) return false;
+            WeaponTags tags = candidate.Definition.tags;
+            if ((tags & WeaponTags.DPS) == 0 || (tags & (WeaponTags.Support | WeaponTags.Utility)) != 0) return false;
+            return Weapons[0] == null || candidate.Definition.EstimatedDps > Weapons[0].Definition.EstimatedDps;
+        }
+
         public bool CanAutoEquip(WeaponInstance weapon)
         {
-            return weapon != null && !equippedWeapons.Contains(weapon) &&
-                (Karma > 3 || WantsWeapon(weapon));
+            if (weapon == null || equippedWeapons.Contains(weapon)) return false;
+            if (run != null && !run.CanAdoptWeapon(this, weapon)) return false;
+            if (Weapons[0] == null) return true;
+            return WantsWeapon(weapon) || Karma > 3 && WeaponQuality(weapon) >= WeaponQuality(Weapons[0]) * 0.85f;
         }
+
+        internal bool CanAcceptEmergencyWeapon(WeaponInstance weapon) => weapon != null && weapon.Definition != null &&
+            (weapon.Definition.tags & WeaponTags.DPS) != 0 &&
+            (Weapons[0] == null || (Weapons[0].Definition.tags & WeaponTags.DPS) == 0);
 
         public void Equip(WeaponInstance weapon)
         {
@@ -571,15 +682,35 @@ namespace MouseKeeper
             if (Weapons[slot] != null)
             {
                 WeaponInstance dropped = Weapons[slot];
+                dropped.SetOwner(null);
                 run.SpawnWeaponPickup(dropped, transform.position + AimDirection * 1.2f);
                 dropped.Definition.OnDrop(this, dropped);
             }
             Weapons[slot] = weapon;
+            weapon.SetOwner(this);
             equippedWeapons.Add(weapon);
             SelectedWeapon = slot;
             RefreshWeaponSpeed();
             weaponVisual.SetWeapon(weapon);
             weapon.Definition.OnPickup(this, weapon);
+        }
+
+        internal WeaponInstance ReleaseWeaponOnDeath()
+        {
+            WeaponInstance weapon = Weapons[SelectedWeapon];
+            if (weapon == null) return null;
+            Weapons[SelectedWeapon] = null;
+            weapon.SetOwner(null);
+            weapon.Definition.OnDrop(this, weapon);
+            if (weaponVisual != null) weaponVisual.SetWeapon(null);
+            return weapon;
+        }
+
+        internal int ReleaseMoneyOnDeath()
+        {
+            int amount = Money;
+            Money = 0;
+            return amount;
         }
 
         public void SwingWeapon(WeaponInstance weapon)
@@ -594,6 +725,7 @@ namespace MouseKeeper
             MovementSpeed += passive.movementSpeedBonus;
             MaxHealth += passive.maxHealthBonus;
             Health = Mathf.Min(MaxHealth, Health + Mathf.Max(0f, passive.maxHealthBonus));
+            run.RecordBalanceHeal(this, null, Health - previousHealth, "passive_max_health");
             EnergyRecharge += passive.energyRechargeBonus;
             if (Health > previousHealth && dialogue != null) dialogue.Speak(DialogueEvent.Healed, 1f);
             passive.OnPickUp(this);
@@ -640,11 +772,13 @@ namespace MouseKeeper
             Destroy(effect, 2f);
         }
 
-        public void TakeDamage(float amount, MouseEnemy attacker = null, Vector3? impact = null, Vector3? sourcePosition = null)
+        public void TakeDamage(float amount, MouseEnemy attacker = null, Vector3? impact = null, Vector3? sourcePosition = null, string damageSource = "unknown")
         {
             if (Dead || EscapeInvulnerable || amount <= 0f) return;
             amount = Mathf.Ceil(amount);
+            float previousHealth = Health;
             Health = Mathf.Max(0f, Health - amount);
+            run.RecordBalanceDamageReceived(this, attacker, previousHealth - Health, Mathf.Max(0f, amount - previousHealth), damageSource);
             Bounds bounds = controller.bounds;
             Vector3 source = sourcePosition ?? (attacker != null ? attacker.transform.position : bounds.center - transform.forward);
             run.ShowBlood(impact ?? GameRun.BloodImpact(bounds, source), bounds.center - source);
@@ -701,7 +835,7 @@ namespace MouseKeeper
 
         public void ResetProgression(AgentProfile original)
         {
-            MaxHealth += (original.EffectiveHealth - profile.EffectiveHealth) * (Specialty == Specialty.Tank ? 1.3f : 1f);
+            MaxHealth += (original.EffectiveHealth - profile.EffectiveHealth) * (Specialty == Specialty.Tank ? TankHealthMultiplier : 1f);
             MovementSpeed += original.EffectiveSpeed - profile.EffectiveSpeed;
             profile = original;
             Health = Mathf.Min(Health, MaxHealth);
@@ -716,11 +850,13 @@ namespace MouseKeeper
             MaxHealth -= passive.maxHealthBonus;
             EnergyRecharge -= passive.energyRechargeBonus;
             Health = Mathf.Min(MaxHealth, amount);
+            run.RecordBalanceHeal(this, this, Health, "revive_passive");
+            run.RecordBalancePassiveRevival(this);
             if (dialogue != null) dialogue.Speak(DialogueEvent.Healed, 1f);
             return true;
         }
 
-        public void Heal(float amount)
+        public void Heal(float amount, bool announce = true, string source = "other", PlayerController healer = null)
         {
             if (amount <= 0f)
             {
@@ -730,7 +866,8 @@ namespace MouseKeeper
             if (Dead) return;
             float previousHealth = Health;
             Health = Mathf.Min(MaxHealth, Health + amount);
-            if (Health > previousHealth && dialogue != null) dialogue.Speak(DialogueEvent.Healed, 1f);
+            run.RecordBalanceHeal(this, healer, Health - previousHealth, source);
+            if (announce && Health > previousHealth && dialogue != null) dialogue.Speak(DialogueEvent.Healed, 1f);
         }
 
         public void AddMoney(int amount)
@@ -752,6 +889,7 @@ namespace MouseKeeper
             }
             if (Money < amount) return false;
             Money -= amount;
+            run.RecordBalanceMoney(this, amount, true);
             return true;
         }
 
@@ -775,6 +913,7 @@ namespace MouseKeeper
             if (Dead) return;
             float previous = Health;
             Health = Mathf.Clamp(amount, 0f, MaxHealth);
+            if (Health > previous) run.RecordBalanceHeal(this, null, Health - previous, "health_balance");
             if (Health > previous && dialogue != null) dialogue.Speak(DialogueEvent.Healed, 1f);
         }
 
@@ -794,18 +933,33 @@ namespace MouseKeeper
 
         public void NotifyWeaponPickupCompleted(ItemPickup pickup) => run.WeaponPickupCompleted(pickup);
 
+        public void RecordPickupScore(PickupKind kind, int price) => run.RecordPickupScore(kind, price);
+
+        internal void RecordBalanceAttack(WeaponInstance weapon, float cost) => run.RecordBalanceAttack(this, weapon, cost);
+
+        public void RecordBalancePickup(PickupKind kind, string name, int price) => run.RecordBalancePickup(this, kind, name, price);
+
         public void NotifyContestedPickup(ItemPickup pickup) => run.ReactToContestedPickup(this, pickup);
 
         internal void CollectMoney(int amount)
         {
             AddMoney(amount);
+            if (amount > 0) run.RecordBalanceMoney(this, amount, false);
             if (amount > 0) run.RecordAgentTotals(this, 0, amount);
         }
 
-        public void NotifyMouseKill(MouseEnemy mouse)
+        public void NotifyMouseKill(MouseEnemy mouse, WeaponInstance weapon = null)
         {
+            run.RecordBalanceKill(this, mouse, weapon);
             run.RecordAgentTotals(this, 1, 0);
             foreach (PassiveItemDefinition passive in passives) passive.OnMouseKill(this, mouse);
+        }
+
+        public static float CriticalChance(int luck) => Mathf.InverseLerp(1f, 10f, luck) * 0.25f;
+
+        public void NotifyCriticalHit(MouseEnemy mouse)
+        {
+            foreach (PassiveItemDefinition passive in passives.ToArray()) passive.OnCriticalHit(this, mouse);
         }
 
         public void RoomEnter()

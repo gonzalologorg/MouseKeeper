@@ -32,8 +32,8 @@ MonoBehaviour:
   - enemy: {fileID: 11400000, guid: 1f34f8cc2fbb48f898ce42d55d900002, type: 2}
     floorWeights:
     - 100
-    - 70
-    - 50
+    - 75
+    - 60
   - enemy: {fileID: 11400000, guid: 27efe414517d7b146958d363d37c51ee, type: 2}
     floorWeights:
     - 0
@@ -43,9 +43,9 @@ MonoBehaviour:
     floorWeights:
     - 4
     - 8
-    - 16
+    - 10
   - enemy: {fileID: 11400000, guid: 3d3b28517d8a06c4196e2cb401274346, type: 2}
     floorWeights:
     - 4
     - 8
-    - 16
+    - 12

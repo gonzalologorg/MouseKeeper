@@ -201,12 +201,14 @@ namespace MouseKeeper
         void ApplyEditorDebug(int command)
         {
             if (Finished || currentRoom == null) { ShowMessage("Depuración no disponible en este momento."); return; }
+            if (balanceReport != null) balanceReport.debug_commands_used = true;
+            BalanceLog("editor_debug", null, null, "", "", command);
             switch (command)
             {
                 case 1:
                     foreach (PlayerController agent in agents)
                         if (agent != null && !agent.Dead && agent.Health < agent.MaxHealth)
-                            agent.Heal(agent.MaxHealth - agent.Health);
+                            agent.Heal(agent.MaxHealth - agent.Health, source: "editor_debug");
                     ShowMessage("Agentes vivos curados.");
                     break;
                 case 2:
@@ -293,11 +295,28 @@ namespace MouseKeeper
 
         void Update()
         {
+            if (!Finished && currentRoom != null) TickBalanceTelemetry(Time.deltaTime, Time.unscaledDeltaTime);
+            if (!Finished && currentRoom != null)
+            {
+                scoreElapsed += Time.deltaTime;
+                int seconds = Mathf.FloorToInt(scoreElapsed);
+                if (seconds > 0)
+                {
+                    scoreElapsed -= seconds;
+                    ChangeScore(-(long)seconds * 10);
+                }
+            }
             Keyboard keyboard = Keyboard.current;
-            SetFastForward(!Finished && currentRoom != null && Application.isFocused &&
+            SetFastForward(!ExpeditionSession.AutoRun && !Finished && currentRoom != null && Application.isFocused &&
                 keyboard != null && keyboard.spaceKey.isPressed);
+            if (ExpeditionSession.AutoRun)
+            {
+                Time.timeScale = 3f;
+                if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { StopAutoRun(); return; }
+                if (Finished) { RestartAutoRun(); return; }
+            }
 #if UNITY_EDITOR
-            if (HandleEditorDebugKeys()) return;
+            if (!ExpeditionSession.AutoRun && HandleEditorDebugKeys()) return;
 #endif
             if (Finished)
             {
@@ -315,7 +334,9 @@ namespace MouseKeeper
             if (IsTransitioning) return;
             UpdateSpecialties();
             if (IsTransitioning) return;
-            if (keyboard != null)
+            EnsureEmergencyDamageWeapon();
+            if (ExpeditionSession.AutoRun) SetFormation(SquadFormation.KeepDistance);
+            else if (keyboard != null)
             {
                 if (keyboard.digit1Key.wasPressedThisFrame || keyboard.numpad1Key.wasPressedThisFrame)
                     SetFormation(SquadFormation.Focus);
@@ -341,10 +362,13 @@ namespace MouseKeeper
                 pendingExit = false;
                 Finished = true;
                 RecordCompletedFloor();
-                ExpeditionSession.Settle(completedFloorCredit, agents.ToArray(), true);
-                SceneManager.LoadScene("Planning");
+                FinishBalanceTelemetry("completed");
+                ExpeditionSession.Settle(completedFloorCredit, agents.ToArray(), true, score);
+                if (ExpeditionSession.AutoRun) RestartAutoRun();
+                else SceneManager.LoadScene("Planning");
                 return;
             }
+            if (ExpeditionSession.AutoRun) { UpdateAutoRun(); return; }
             Mouse mouse = Mouse.current;
             if (mouse == null) return;
             Vector2 mousePosition = mouse.position.ReadValue();
@@ -486,6 +510,210 @@ namespace MouseKeeper
                 Vector3 offset = Quaternion.Euler(0f, i * 120f, 0f) * Vector3.forward * 0.9f;
                 agents[i].IssueMoveOrder(ClampToCurrentRoom(point + offset));
             }
+        }
+
+        Room autoObservedRoom;
+        int autoObservedKills;
+        float autoLastProgress, autoActionAt, autoPendingSince;
+        Room autoLootRoom;
+        int autoMoneyRemaining;
+        float autoMoneyProgressAt;
+        bool autoLootDone;
+
+        sealed class AutoAgentProgress
+        {
+            public Vector3 position, goal;
+            public float movedAt;
+            public bool tracking;
+        }
+        readonly Dictionary<PlayerController, AutoAgentProgress> autoAgentProgress = new Dictionary<PlayerController, AutoAgentProgress>();
+
+        void EnsureEmergencyDamageWeapon()
+        {
+            if (currentRoom == null || currentRoom.root == null || CanLeave(currentRoom) || EnemyCount <= 0 ||
+                ExpeditionSession.Catalog == null || ExpeditionSession.Catalog.basicWeapon == null) return;
+            PlayerController recipient = null;
+            foreach (PlayerController agent in agents)
+            {
+                if (agent == null || agent.Dead) continue;
+                if (recipient == null) recipient = agent;
+                WeaponInstance weapon = agent.Weapons[0];
+                if (weapon != null && (weapon.Definition.tags & WeaponTags.DPS) != 0) return;
+            }
+            if (recipient == null) return;
+            foreach (ItemPickup pickup in currentRoom.root.GetComponentsInChildren<ItemPickup>())
+                if (pickup.Available && pickup.IsEmergencyWeapon) return;
+            ItemPickup fallback = SpawnWeaponPickup(new WeaponInstance(ExpeditionSession.Catalog.basicWeapon), recipient.transform.position);
+            fallback.MarkEmergencyWeapon();
+            BalanceLog("emergency_weapon_spawned", recipient, null, "no_offensive_weapon", fallback.DisplayName);
+        }
+
+        void UpdateAutoRun()
+        {
+            CheckAutoAgentProgress();
+            if (currentRoom != autoObservedRoom || miceDefeated != autoObservedKills)
+            {
+                bool changedRoom = currentRoom != autoObservedRoom;
+                autoObservedRoom = currentRoom;
+                autoObservedKills = miceDefeated;
+                autoLastProgress = Time.time;
+                if (changedRoom) autoActionAt = Time.time + (currentRoom.kind == RoomKind.Corridor ? 0.5f : 5f);
+            }
+            // Non-damaging loadouts or blocked navigation must not stop a sampling batch forever.
+            if (Time.time - autoLastProgress > 120f)
+            {
+                BalanceLog("auto_run_stalled", null, null, "no_progress", "", 120f);
+                FinishBalanceTelemetry("interrupted");
+                RestartAutoRun();
+                return;
+            }
+            if (!CanLeave(currentRoom)) { autoLootRoom = null; return; }
+            if (transitionDelay > 0f || Time.time < autoActionAt) return;
+            if (currentRoom.kind != RoomKind.Corridor && WaitForAutoMoney()) return;
+            if (pendingCorridorDestination != null)
+            {
+                if (Time.time - autoPendingSince < 20f) return;
+                ClearPendingCorridorDoor();
+            }
+            if (pendingVent || pendingExit)
+            {
+                if (Time.time - autoPendingSince < 8f) return;
+                pendingVent = pendingExit = false;
+            }
+            autoActionAt = Time.time + 1f;
+            autoPendingSince = Time.time;
+            if (currentRoom == bossRoom && currentRoom.bossDefeated)
+            {
+                if (currentRoom.vent != null) { pendingVent = true; OrderSquad(currentRoom.vent.transform.position); }
+                else if (currentRoom.exitDoor != null) { pendingExit = true; OrderSquad(ExitApproach(currentRoom)); }
+                return;
+            }
+            if (currentRoom.kind == RoomKind.Corridor)
+            {
+                var options = new List<Room>();
+                foreach (Room room in rooms)
+                    if (room.kind != RoomKind.Corridor && room != bossRoom && (!room.visited || !room.cleared)) options.Add(room);
+                if (options.Count == 0 && bossRoom != null && BossRevealed()) options.Add(bossRoom);
+                if (options.Count > 0) QueueCorridorDoor(options[Random.Range(0, options.Count)]);
+                return;
+            }
+            var exits = new List<int>();
+            for (int i = 0; i < currentRoom.neighbours.Length; i++)
+                if (currentRoom.neighbours[i] != null && currentRoom.neighbours[i].kind == RoomKind.Corridor) exits.Add(i);
+            if (exits.Count > 0)
+            {
+                int direction = exits[Random.Range(0, exits.Count)];
+                StartCoroutine(TravelToRoom(currentRoom.neighbours[direction], direction));
+            }
+        }
+
+        bool WaitForAutoMoney()
+        {
+            if (currentRoom.root == null) return false;
+            int available = 0, collectible = 0;
+            foreach (ItemPickup pickup in currentRoom.root.GetComponentsInChildren<ItemPickup>())
+            {
+                if (!pickup.Available || pickup.Kind != PickupKind.Money) continue;
+                available++;
+                if (PickupOwner(pickup) != null) collectible++;
+            }
+            if (autoLootRoom != currentRoom)
+            {
+                autoLootRoom = currentRoom;
+                autoMoneyRemaining = available;
+                autoMoneyProgressAt = Time.time;
+                autoLootDone = false;
+            }
+            if (autoLootDone) return false;
+            if (available < autoMoneyRemaining) autoMoneyProgressAt = Time.time;
+            autoMoneyRemaining = available;
+            if (collectible > 0 && Time.time - autoMoneyProgressAt < 20f) return true;
+            if (available > 0)
+                BalanceLog("auto_run_loot_unclaimed", null, null, collectible == 0 ? "no_eligible_agent" : "timeout", "Money", available);
+            autoLootDone = true;
+            return false;
+        }
+
+        void CheckAutoAgentProgress()
+        {
+            foreach (PlayerController agent in agents)
+            {
+                if (agent == null || agent.Dead) continue;
+                if (!autoAgentProgress.TryGetValue(agent, out AutoAgentProgress state))
+                    autoAgentProgress[agent] = state = new AutoAgentProgress();
+                ItemPickup pickup = CanLeave(currentRoom) && agent.ReachedDestination ? SelectPickup(agent) : null;
+                bool moving = !agent.ReachedDestination || pickup != null;
+                Vector3 goal = !agent.ReachedDestination ? agent.MoveDestination : pickup != null ? pickup.transform.position : agent.transform.position;
+                if (!moving) { state.tracking = false; continue; }
+                if (!state.tracking || (state.goal - goal).sqrMagnitude > 0.5f * 0.5f ||
+                    (state.position - agent.transform.position).sqrMagnitude > 0.2f * 0.2f)
+                {
+                    state.position = agent.transform.position;
+                    state.goal = goal;
+                    state.movedAt = Time.time;
+                    state.tracking = true;
+                    continue;
+                }
+                if (Time.time - state.movedAt < 5f) continue;
+                if (TryFindAutoRecoveryPosition(agent, out Vector3 safe))
+                {
+                    float distance = Vector3.Distance(agent.transform.position, safe);
+                    agent.RecoverNavigationPosition(safe, false);
+                    BalanceLog("agent_unstuck", agent, null, pickup != null ? "auto_loot" : "auto_navigation", "", distance);
+                }
+                state.position = agent.transform.position;
+                state.movedAt = Time.time;
+            }
+        }
+
+        bool TryFindAutoRecoveryPosition(PlayerController agent, out Vector3 safe)
+        {
+            safe = agent.transform.position;
+            var anchors = new List<Vector3>();
+            foreach (PlayerController ally in agents)
+                if (ally != null && ally != agent && !ally.Dead) anchors.Add(ally.transform.position);
+            anchors.Add(agent.transform.position);
+            anchors.Add(currentRoom.center);
+            foreach (Vector3 anchor in anchors)
+                for (int i = 0; i < 8; i++)
+                {
+                    float angle = i * Mathf.PI * 0.25f;
+                    Vector3 candidate = anchor + new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle)) * 1.2f;
+                    if (!UnityEngine.AI.NavMesh.SamplePosition(candidate, out UnityEngine.AI.NavMeshHit hit, 1f, UnityEngine.AI.NavMesh.AllAreas)) continue;
+                    Vector3 local = hit.position - currentRoom.center;
+                    if (currentRoom.kind == RoomKind.Corridor)
+                    {
+                        Room corridor = ClosestCorridor(hit.position);
+                        if (corridor == null || (ProjectOntoCorridor(corridor, hit.position) - hit.position).sqrMagnitude > 0.25f) continue;
+                    }
+                    else if (Mathf.Abs(local.x) > currentRoom.width * 0.5f - 0.6f || Mathf.Abs(local.z) > currentRoom.depthSize * 0.5f - 0.6f) continue;
+                    CharacterController shape = agent.GetComponent<CharacterController>();
+                    float radius = shape != null ? Mathf.Max(0.1f, shape.radius * 0.85f) : 0.35f;
+                    float height = shape != null ? Mathf.Max(radius * 2f, shape.height) : 1.8f;
+                    Vector3 bottom = hit.position + Vector3.up * (radius + 0.08f);
+                    Vector3 top = hit.position + Vector3.up * (height - radius + 0.08f);
+                    bool blocked = false;
+                    foreach (Collider obstacle in Physics.OverlapCapsule(bottom, top, radius, ~0, QueryTriggerInteraction.Ignore))
+                        if (!obstacle.transform.IsChildOf(agent.transform)) { blocked = true; break; }
+                    if (blocked) continue;
+                    safe = hit.position + Vector3.up * 0.05f;
+                    return true;
+                }
+            return false;
+        }
+
+        void RestartAutoRun()
+        {
+            ExpeditionSession.NextAutoRun();
+            SceneManager.LoadScene("SampleScene");
+        }
+
+        void StopAutoRun()
+        {
+            FinishBalanceTelemetry("interrupted");
+            SetFastForward(false);
+            ExpeditionSession.StopAutoRun();
+            SceneManager.LoadScene("Planning");
         }
 
         const float DeathShakeDuration = 0.25f;

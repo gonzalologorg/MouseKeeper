@@ -13,11 +13,19 @@ MonoBehaviour:
   m_Name: Whip
   m_EditorClassIdentifier: Assembly-CSharp::MouseKeeper.WhipWeaponDefinition
   displayName: Latigo
+  tags: 14
   icon: {fileID: 21300000, guid: 26807a327b1f482883b038d9bd014fd0, type: 3}
+  modelPrefab: {fileID: 0}
+  modelMesh: {fileID: 0}
+  modelMaterial: {fileID: 0}
+  modelPosition: {x: 0, y: 0, z: 0}
+  modelRotation: {x: 0, y: 0, z: 0}
   modelScale: {x: 1, y: 1, z: 1}
   maxEnergy: 4
-  damage: 15
-  attackInterval: 3
-  range: 2.5
+  damage: 20
+  attackInterval: 2
+  range: 5
   primaryCost: 1
+  secondaryCost: 4
   reloadDuration: 2
+  pushDistance: 4

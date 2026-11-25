@@ -5,7 +5,18 @@ namespace MouseKeeper
     public sealed partial class GameRun
     {
         bool returnToPlanningAfterDefeat;
-        int ClearedFloors => Mathf.Min(ExpeditionSession.FloorCount, fullyClearedFloors + (FloorCleared() ? 1 : 0));
+
+        void ChangeScore(double amount)
+        {
+            score = System.Math.Max(int.MinValue, System.Math.Min(int.MaxValue, score + amount));
+        }
+
+        public void RecordPickupScore(PickupKind kind, int price)
+        {
+            if (Finished) return;
+            ChangeScore((long)Mathf.Max(0, price) * 10 +
+                (kind == PickupKind.Passive ? 30 : kind == PickupKind.Weapon ? 50 : 0));
+        }
 
         int ClearedRoomCount()
         {
@@ -24,23 +35,14 @@ namespace MouseKeeper
 
         bool BossRevealed() => bossRoom != null && ClearedRoomCount() * 2 >= ChamberCount();
 
-        string FloorProgress()
-        {
-            int clearedRooms = ClearedRoomCount();
-            int chambers = ChamberCount();
-            int roomPercent = chambers > 0 ? Mathf.RoundToInt(100f * clearedRooms / chambers) : 0;
-            int floorPercent = Mathf.RoundToInt(100f * ClearedFloors / ExpeditionSession.FloorCount);
-            return GameText.Format("Piso {0}/{1} | Limpieza: {2}/{3} ({4}%) | Pisos completos: {5}/{1} ({6}%)",
-                levelIndex + 1, ExpeditionSession.FloorCount, clearedRooms, chambers, roomPercent, ClearedFloors, floorPercent);
-        }
-
         public void EndRun()
         {
             if (Finished) return;
             Finished = true;
             returnToPlanningAfterDefeat = ExpeditionSession.Active;
+            FinishBalanceTelemetry("defeat");
             if (ExpeditionSession.Active)
-                ExpeditionSession.Settle(completedFloorCredit + (FloorCleared() ? 1f : 0f), agents.ToArray(), false);
+                ExpeditionSession.Settle(completedFloorCredit + (FloorCleared() ? 1f : 0f), agents.ToArray(), false, score);
         }
 
         public void ShowMessage(string text)
@@ -72,17 +74,16 @@ namespace MouseKeeper
                     source.width / texture.width, source.height / texture.height));
         }
 
-        void DrawPassiveIcons(PlayerController agent, float y)
+        void DrawPassiveIcons(PlayerController agent, Rect area)
         {
-            float start = Mathf.Clamp((Screen.width - 270f) * 0.6f, 260f, 650f);
-            int capacity = Mathf.Max(0, Mathf.FloorToInt((FormationButtonsRect().x - start - 5f) / 22f));
+            int capacity = Mathf.Max(0, Mathf.FloorToInt(area.width / 24f));
             int shown = Mathf.Min(agent.Passives.Count, capacity);
             if (agent.Passives.Count > capacity && capacity > 0) shown--;
             for (int i = 0; i < shown; i++)
             {
                 PassiveItemDefinition passive = agent.Passives[i];
                 if (passive == null) continue;
-                Rect rect = new Rect(start + i * 22f, y, 20f, 20f);
+                Rect rect = new Rect(area.x + i * 24f, area.y, 22f, 22f);
                 Sprite icon = passive.DisplayIcon;
                 if (icon != null)
                 {
@@ -99,13 +100,13 @@ namespace MouseKeeper
                 GUI.Label(rect, new GUIContent("", GameText.Get(passive.displayName)));
             }
             if (agent.Passives.Count > shown && capacity > 0)
-                GUI.Label(new Rect(start + shown * 22f, y, 40f, 20f), "+" + (agent.Passives.Count - shown));
+                GUI.Label(new Rect(area.x + shown * 24f, area.y, 36f, 22f), "+" + (agent.Passives.Count - shown), agentHudLabel);
         }
 
         void DrawFormationButtons()
         {
             string[] labels = { "Objetivo", "Distancia", "Cercano" };
-            string[] descriptions = { "1: concentrar fuego", "2: mantener distancia", "3: enemigo más cercano" };
+            string[] descriptions = { "Concentrar fuego", "Mantener distancia", "Enemigo más cercano" };
             Color previous = GUI.backgroundColor;
             for (int i = 0; i < 3; i++)
             {
@@ -113,43 +114,103 @@ namespace MouseKeeper
                 GUI.backgroundColor = (int)Formation == i ? new Color(1f, 0.78f, 0.32f) : previous;
                 GUI.Box(button, new GUIContent("", GameText.Get(descriptions[i])), GUI.skin.button);
                 DrawAtlasIcon(new Rect(button.x + 23f, button.y + 3f, 32f, 32f), 5 + i);
-                GUI.Label(new Rect(button.x + 5f, button.y + 37f, 72f, 22f), $"{i + 1} {GameText.Get(labels[i])}");
+                GUI.Label(new Rect(button.x + 5f, button.y + 37f, 72f, 22f), GameText.Get(labels[i]), agentHudLabel);
             }
             GUI.backgroundColor = previous;
         }
 
         GUIStyle agentHudLabel;
+        GUIStyle agentHudName;
+        GUIStyle healthHudLabel;
+
+        static void HudRect(Rect rect, Color color)
+        {
+            Color previous = GUI.color;
+            GUI.color = color;
+            GUI.DrawTexture(rect, Texture2D.whiteTexture);
+            GUI.color = previous;
+        }
+
+        void DrawAgentHud(PlayerController agent, Rect panel)
+        {
+            if (agent == null || agent.Profile == null) return;
+            float x = panel.x + 9f;
+            float y = panel.y + 3f;
+            string name = agent.Profile.name;
+            float nameWidth = Mathf.Min(125f, agentHudName.CalcSize(new GUIContent(name)).x + 3f);
+            GUI.Label(new Rect(x, y, nameWidth, 21f), name, agentHudName);
+            x += nameWidth;
+            string details = $" | ${agent.Money} | Lvl {agent.Profile.Level} |";
+            float detailsWidth = agentHudLabel.CalcSize(new GUIContent(details)).x + 3f;
+            GUI.Label(new Rect(x, y, detailsWidth, 21f), details, agentHudLabel);
+            x += detailsWidth + 2f;
+            Texture2D specialty = squadIndicators != null ? squadIndicators.SpecialtyIcon(agent.Specialty) : null;
+            if (specialty != null && x + 19f <= panel.xMax)
+                GUI.DrawTexture(new Rect(x, y, 19f, 19f), specialty);
+
+            Rect health = new Rect(panel.x + 9f, panel.y + 31.5f, 142f, 11f);
+            HudRect(health, new Color(0.5f, 0.5f, 0.5f, 0.4f));
+            float fraction = agent.Dead || agent.MaxHealth <= 0f ? 0f : Mathf.Clamp01(agent.Health / agent.MaxHealth);
+            Color fill = Color.Lerp(new Color(0.88f, 0.24f, 0.19f), new Color(0.28f, 0.76f, 0.44f), fraction);
+            fill = Color.Lerp(fill, Color.white, 0.5f);
+            HudRect(new Rect(health.x + 1f, health.y + 1f, (health.width - 2f) * fraction, health.height - 2f), fill);
+            GUI.Label(new Rect(health.x, panel.y + 26f, health.width, 22f),
+                agent.Dead ? GameText.Get("Caído") : $"{agent.Health:0} / {agent.MaxHealth:0}", healthHudLabel);
+
+            Rect weaponRect = new Rect(health.xMax + 7f, panel.y + 26f, 22f, 22f);
+            WeaponInstance weapon = agent.Weapons[agent.SelectedWeapon];
+            if (weapon != null && weapon.Definition != null)
+            {
+                if (weapon.Definition.icon != null) DrawSpriteIcon(weaponRect, weapon.Definition.icon);
+                GUI.Label(weaponRect, new GUIContent("", GameText.Get(weapon.Definition.displayName)));
+            }
+            DrawPassiveIcons(agent, new Rect(weaponRect.xMax + 7f, weaponRect.y,
+                Mathf.Max(0f, panel.xMax - weaponRect.xMax - 14f), 22f));
+        }
+
+        void DrawBossHealthBar()
+        {
+            if (viewCamera == null || currentRoom == null || currentRoom != bossRoom ||
+                currentRoom.boss == null || currentRoom.boss.IsDefeated || currentRoom.boss.maxHealth <= 0f) return;
+            MouseEnemy boss = currentRoom.boss;
+            CharacterController shape = boss.GetComponent<CharacterController>();
+            Vector3 anchor = shape != null ? new Vector3(shape.bounds.center.x, shape.bounds.max.y + 0.5f, shape.bounds.center.z) : boss.transform.position + Vector3.up * 2f;
+            Vector3 screen = viewCamera.WorldToScreenPoint(anchor);
+            if (screen.z <= 0f) return;
+            Rect bar = new Rect(screen.x - 80f, Screen.height - screen.y - 6f, 160f, 12f);
+            HudRect(bar, new Color(0.08f, 0.08f, 0.08f, 0.85f));
+            HudRect(new Rect(bar.x + 1f, bar.y + 1f, (bar.width - 2f) * Mathf.Clamp01(boss.Health / boss.maxHealth), bar.height - 2f),
+                new Color(0.85f, 0.18f, 0.2f));
+        }
 
         void OnGUI()
         {
             if (player == null) return;
-            agentHudLabel ??= new GUIStyle(GUI.skin.label) { richText = true };
-#if UNITY_EDITOR
-            GUI.Label(new Rect(15f, 15f, 1100f, 24f),
-                "EDITOR: F1 curar | F2 karma +5 | F3 karma -5 | F4 eliminar ratas | F5 reiniciar piso | F6 caer agente");
-#endif
-            GUI.Label(new Rect(15f, Screen.height - 110f, 800f, 25f),
-                GameText.Get("Clic derecho: mover / elegir rata, puerta, escotilla o arma"));
-            for (int i = 0; i < agents.Count; i++)
+            if (ExpeditionSession.AutoRun && GUI.Button(new Rect(15f, 45f, 190f, 30f), "DETENER AUTO-RUN (ESC)"))
             {
-                PlayerController agent = agents[i];
-                WeaponInstance weapon = agent.Weapons[agent.SelectedWeapon];
-                string weaponText = weapon != null ? GameText.Get(weapon.Definition.displayName) : GameText.Get("Sin arma");
-                string nameColor = ColorUtility.ToHtmlStringRGB(agent.Profile.LevelColor);
-                string name = $"<color=#{nameColor}>{agent.Profile.NameWithLevel(10)}</color>";
-                float y = Screen.height - 85f + i * 20f;
-                Texture2D specialtyIcon = squadIndicators != null ? squadIndicators.SpecialtyIcon(agent.Specialty) : null;
-                if (specialtyIcon != null) GUI.DrawTexture(new Rect(15f, y, 19f, 19f), specialtyIcon);
-                GUI.Label(new Rect(37f, y, 600f, 22f),
-                    $"{name}: {(agent.Dead ? GameText.Format("caído (tienda ${0} o siguiente piso)", ShopRevivalPrice) : $"{agent.Health:0}/{agent.MaxHealth:0}")} | ${agent.Money} | Karma {agent.Karma:+0;-0;0} | {weaponText}", agentHudLabel);
-                DrawPassiveIcons(agent, Screen.height - 85f + i * 20f);
+                StopAutoRun();
+                return;
             }
+            if (ExpeditionSession.AutoRun)
+                GUI.Label(new Rect(15f, 78f, 300f, 22f), "AUTO-RUN #" + ExpeditionSession.AutoRunNumber + " · x3 · " + ExpeditionSession.Difficulty);
+            DrawBossHealthBar();
+            agentHudLabel ??= new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.MiddleLeft };
+            agentHudLabel.normal.textColor = Color.white;
+            agentHudName ??= new GUIStyle(agentHudLabel) { fontStyle = FontStyle.Bold, clipping = TextClipping.Clip };
+            healthHudLabel ??= new GUIStyle(agentHudLabel) { alignment = TextAnchor.MiddleCenter, fontStyle = FontStyle.Bold };
+            agentHudName.normal.textColor = Color.white;
+            healthHudLabel.normal.textColor = Color.white;
+            float panelWidth = Mathf.Max(225f, Mathf.Min(380f, FormationButtonsRect().x - 25f));
+            float firstY = Screen.height - 10f - agents.Count * 56f;
+            for (int i = 0; i < agents.Count; i++)
+                DrawAgentHud(agents[i], new Rect(15f, firstY + i * 56f, panelWidth, 52f));
             DrawFormationButtons();
-            GUI.Label(new Rect(15f, Screen.height - 25f, 650f, 22f), FloorProgress());
-            if (currentRoom != null && !currentRoom.cleared)
-                GUI.Label(new Rect(15f, Screen.height - 135f, 250f, 25f), GameText.Format("Plagas restantes: {0}", currentRoom.enemies));
+            var floorPanel = new Rect(Screen.width - 165f, 15f, 150f, 52f);
+            GUI.Label(new Rect(floorPanel.x + 9f, floorPanel.y + 4f, 135f, 21f), GameText.Format("Piso: {0}", levelIndex + 1), agentHudLabel);
+            GUI.Label(new Rect(floorPanel.x + 9f, floorPanel.y + 26f, 135f, 21f), GameText.Format("Ratones: {0}", miceDefeated), agentHudLabel);
+            GUI.Label(new Rect(floorPanel.x + 9f, floorPanel.y + 48f, 150f, 21f), GameText.Format("Puntaje: {0}", score.ToString("0.#")), agentHudLabel);
             if (bossRoom != null && bossRoom.bossDefeated && !FloorCleared() && ChamberCount() > 0)
-                GUI.Label(new Rect(15f, Screen.height - 155f, 600f, 22f),
+                GUI.Label(new Rect(15f, firstY - 24f, 600f, 22f),
                     GameText.Format("Salida anticipada: -{0}% del contrato",
                         (100f * ClearedRoomCount() / ChamberCount() / ExpeditionSession.FloorCount).ToString("0.#")));
             foreach (PlayerController agent in agents)

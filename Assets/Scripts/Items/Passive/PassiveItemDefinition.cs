@@ -34,6 +34,8 @@ namespace MouseKeeper
         public virtual void OnRoomExit(PlayerController player) { }
         public virtual void OnDeath(PlayerController player) { }
         public virtual void OnMouseKill(PlayerController player, MouseEnemy mouse) { }
+        public virtual void OnCriticalHit(PlayerController player, MouseEnemy mouse) { }
+        public virtual void OnCombatTick(PlayerController player, float deltaTime) { }
         public virtual void OnTakeDamage(PlayerController player, float amount) { }
         public virtual void OnAttacked(PlayerController player, MouseEnemy attacker, float amount) { }
     }

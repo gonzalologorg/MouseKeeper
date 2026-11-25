@@ -82,6 +82,71 @@ public sealed class ExpeditionSessionTests
     }
 
     [Test]
+    public void AutoRunCreatesIndependentRandomPlansAndRestoresCampaign()
+    {
+        data.money = 37;
+        data.active = true;
+        string savedCampaign = PlayerPrefs.GetString(Key);
+        float originalScale = Time.timeScale;
+        try
+        {
+            Assert.That(ExpeditionSession.StartAutoRun(out string error), Is.True, error);
+            Assert.That(ExpeditionSession.Data, Is.Not.SameAs(data));
+            Assert.That(ExpeditionSession.Active, Is.True);
+            Assert.That(Time.timeScale, Is.EqualTo(3f));
+            for (int runIndex = 0; runIndex < 20; runIndex++)
+            {
+                CampaignData plan = ExpeditionSession.Data;
+                Assert.That(new HashSet<int>(plan.selectedAgents).Count, Is.EqualTo(3));
+                Assert.That(new HashSet<Specialty>(plan.specialties).Count, Is.EqualTo(3));
+                foreach (int weapon in plan.selectedWeapons) Assert.That(weapon, Is.InRange(0, catalog.weapons.Length - 1));
+                ExpeditionSession.Save();
+                Assert.That(PlayerPrefs.GetString(Key), Is.EqualTo(savedCampaign));
+                ExpeditionSession.NextAutoRun();
+            }
+            Assert.That(ExpeditionSession.AutoRunNumber, Is.EqualTo(21));
+        }
+        finally { ExpeditionSession.StopAutoRun(); }
+        Assert.That(ExpeditionSession.Data, Is.SameAs(data));
+        Assert.That(data.money, Is.EqualTo(37));
+        Assert.That(data.active, Is.True);
+        Assert.That(Time.timeScale, Is.EqualTo(originalScale));
+    }
+
+    [Test]
+    public void LuckCanBeUpgradedAndControlsCriticalChance()
+    {
+        int index = data.selectedAgents[0];
+        catalog.agents[index].profile.luck = 1;
+        data.progress[index].pending = 1;
+        Assert.That(PlayerController.CriticalChance(1), Is.EqualTo(0f));
+        Assert.That(PlayerController.CriticalChance(10), Is.EqualTo(0.25f).Within(0.0001f));
+        Assert.That(ExpeditionSession.Upgrade(data, catalog, index, 6), Is.True);
+        Assert.That(ExpeditionSession.Profile(data, catalog, index).luck, Is.EqualTo(2));
+        Assert.That(data.progress[index].Total, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void BossAndSwarmUseIndependentDifficultyMultipliers()
+    {
+        Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Easy), Is.EqualTo(0.5f));
+        Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Normal), Is.EqualTo(0.75f));
+        Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Hard), Is.EqualTo(1.25f));
+        Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(1.5f));
+        Assert.That(ExpeditionSession.EnemyCountMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(2f));
+        Assert.That(ExpeditionSession.DifficultyMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(2.5f));
+    }
+
+    [Test]
+    public void TazerSplitsDamageAmongTargets()
+    {
+        Assert.That(TazerWeaponDefinition.DamagePerTarget(20f, 1), Is.EqualTo(20f));
+        Assert.That(TazerWeaponDefinition.DamagePerTarget(20f, 2), Is.EqualTo(10f));
+        Assert.That(TazerWeaponDefinition.DamagePerTarget(20f, 4), Is.EqualTo(5f));
+        Assert.That(TazerWeaponDefinition.DamagePerTarget(20f, 0), Is.Zero);
+    }
+
+    [Test]
     public void SpecialtiesMustBeUniqueAndCostTenPercentOfContractEach()
     {
         data.specialties = new[] { Specialty.Dps, Specialty.Medic, Specialty.Medic };
@@ -96,14 +161,14 @@ public sealed class ExpeditionSessionTests
     }
 
     [Test]
-    public void TankHasThirtyPercentExtraHealthAndDpsHasDamageBonus()
+    public void TankHasTwoHundredFiftyPercentExtraHealthAndDpsHasDamageBonus()
     {
         PlayerController[] squad = Squad();
         float health = squad[0].MaxHealth;
         squad[0].SetSpecialty(Specialty.Tank);
         squad[1].SetSpecialty(Specialty.Dps);
-        Assert.That(squad[0].MaxHealth, Is.EqualTo(health * 1.3f).Within(0.001f));
-        Assert.That(squad[0].Health, Is.EqualTo(health * 1.3f).Within(0.001f));
+        Assert.That(squad[0].MaxHealth, Is.EqualTo(health * 3.5f).Within(0.001f));
+        Assert.That(squad[0].Health, Is.EqualTo(health * 3.5f).Within(0.001f));
         Assert.That(squad[1].WeaponDamageMultiplier, Is.EqualTo(1.2f).Within(0.001f));
     }
 
@@ -156,9 +221,85 @@ public sealed class ExpeditionSessionTests
         Assert.That(squad[1].Health, Is.EqualTo(10f));
         roomType.GetField("cleared").SetValue(room, true);
         update.Invoke(run, null);
-        Assert.That(squad[1].Health, Is.EqualTo(12f));
+        Assert.That(squad[1].Health, Is.EqualTo(10f + squad[1].MaxHealth * 0.05f).Within(0.001f));
         Assert.That(squad[0].Money, Is.EqualTo(1));
         Assert.That(squad[0].Karma, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void MedicRegeneratesToHalfAndPrioritizesLowestHealthFraction()
+    {
+        PlayerController[] squad = Squad();
+        PlayerController medic = squad[0];
+        medic.SetSpecialty(Specialty.Medic);
+        squad[2].SetSpecialty(Specialty.Tank);
+        float max = medic.MaxHealth;
+        typeof(PlayerController).GetProperty("Health").SetValue(medic, max * 0.48f);
+        typeof(PlayerController).GetMethod("UpdateMedicRegeneration", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(medic, new object[] { 5f });
+        Assert.That(medic.Health, Is.EqualTo(max * 0.5f).Within(0.001f));
+        medic.AddMoney(1);
+        typeof(PlayerController).GetProperty("Health").SetValue(squad[1], squad[1].MaxHealth * 0.6f);
+        typeof(PlayerController).GetProperty("Health").SetValue(squad[2], squad[2].MaxHealth * 0.3f);
+        var agents = (List<PlayerController>)typeof(GameRun).GetField("agents", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        agents.AddRange(squad);
+        Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+        object room = Activator.CreateInstance(roomType, true);
+        roomType.GetField("cleared").SetValue(room, true);
+        typeof(GameRun).GetField("currentRoom", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(run, room);
+        float before = squad[2].Health;
+        typeof(GameRun).GetMethod("UpdateSpecialties", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(run, null);
+        Assert.That(squad[2].Health, Is.EqualTo(before + squad[2].MaxHealth * 0.05f).Within(0.001f));
+        Assert.That(medic.Money, Is.Zero);
+    }
+
+    [Test]
+    public void SupportRolesPreferWhipAndBlowerOverRegularWeapons()
+    {
+        PlayerController[] squad = Squad();
+        var blower = ScriptableObject.CreateInstance<BlowerWeaponDefinition>();
+        var whip = ScriptableObject.CreateInstance<WhipWeaponDefinition>();
+        try
+        {
+            squad[0].SetSpecialty(Specialty.Medic);
+            squad[1].SetSpecialty(Specialty.Tank);
+            squad[2].SetSpecialty(Specialty.Locksmith);
+            foreach (PlayerController agent in squad)
+            {
+                Assert.That(agent.WantsWeapon(new WeaponInstance(blower)), Is.True);
+                agent.Weapons[0] = new WeaponInstance(whip);
+                typeof(PlayerController).GetProperty("Karma").SetValue(agent, 20);
+                Assert.That(agent.CanAutoEquip(new WeaponInstance(catalog.weapons[0])), Is.False);
+            }
+        }
+        finally { Object.DestroyImmediate(blower); Object.DestroyImmediate(whip); }
+    }
+
+    [Test]
+    public void RatPrioritizesTankInitiallyAndSwitchesWhenTankIsFar()
+    {
+        PlayerController[] squad = Squad();
+        squad[0].SetSpecialty(Specialty.Tank);
+        squad[0].transform.position = Vector3.right * 12f;
+        squad[1].transform.position = Vector3.right;
+        squad[2].transform.position = Vector3.right * 5f;
+        var agents = (List<PlayerController>)typeof(GameRun).GetField("agents", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(run);
+        agents.AddRange(squad);
+        var ratObject = new GameObject("Rat");
+        try
+        {
+            MouseEnemy rat = ratObject.AddComponent<MouseEnemy>();
+            rat.Initialize(run, squad[1], Vector3.zero, 1);
+            typeof(MouseEnemy).GetField("targetsTankInitially", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(rat, true);
+            MethodInfo select = typeof(MouseEnemy).GetMethod("SelectAgentTarget", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(select.Invoke(rat, new object[] { null }), Is.SameAs(squad[0]));
+            typeof(MouseEnemy).GetField("initialTankAttention", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(rat, 0f);
+            Assert.That(select.Invoke(rat, new object[] { null }), Is.SameAs(squad[1]));
+            squad[0].transform.position = Vector3.right * 2f;
+            Assert.That(select.Invoke(rat, new object[] { null }), Is.SameAs(squad[0]));
+            typeof(MouseEnemy).GetField("targetsTankInitially", BindingFlags.Instance | BindingFlags.NonPublic).SetValue(rat, false);
+            Assert.That(select.Invoke(rat, new object[] { null }), Is.SameAs(squad[1]));
+        }
+        finally { Object.DestroyImmediate(ratObject); }
     }
 
     [TestCase(ExpeditionDifficulty.Easy, 25, 0)]

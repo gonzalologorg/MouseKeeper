@@ -102,6 +102,48 @@ public sealed class BalanceAndCameraTests
         finally { Object.DestroyImmediate(bossObject); }
     }
 
+    [Test]
+    public void BossHealthAndDamageThresholdsScaleWithoutLosingCrossedSteps()
+    {
+        var root = new GameObject("Run");
+        var bossObject = new GameObject("Boss");
+        try
+        {
+            var run = root.AddComponent<GameRun>();
+            var boss = bossObject.AddComponent<MouseEnemy>();
+            boss.maxHealth = 100f;
+            Type roomType = typeof(GameRun).GetNestedType("Room", BindingFlags.NonPublic);
+            object room = Activator.CreateInstance(roomType, true);
+            roomType.GetField("boss").SetValue(room, boss);
+            typeof(GameRun).GetField("currentRoom", PrivateInstance).SetValue(run, room);
+            MethodInfo multiplier = typeof(GameRun).GetMethod("BossHealthMultiplier", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(multiplier.Invoke(null, new object[] { 1 }), Is.EqualTo(3f));
+            Assert.That(multiplier.Invoke(null, new object[] { 3 }), Is.EqualTo(9f));
+            MethodInfo queue = typeof(GameRun).GetMethod("QueueBossDamageSpawns", PrivateInstance);
+            queue.Invoke(run, new object[] { boss, 90f });
+            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(1));
+            queue.Invoke(run, new object[] { boss, 55f });
+            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(4));
+            queue.Invoke(run, new object[] { boss, 55f });
+            queue.Invoke(run, new object[] { boss, 0f });
+            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(10));
+            Assert.That(roomType.GetField("spawning").GetValue(room), Is.True);
+            MethodInfo points = typeof(GameRun).GetMethod("MouseScore", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(points.Invoke(null, new object[] { false, MouseEnemy.MouseVariant.Mushroom, 0 }), Is.EqualTo(25d));
+            Assert.That(points.Invoke(null, new object[] { false, MouseEnemy.MouseVariant.Mushroom, 1 }), Is.EqualTo(12.5d));
+            Assert.That(points.Invoke(null, new object[] { true, MouseEnemy.MouseVariant.Mushroom, 1 }), Is.EqualTo(100d));
+        }
+        finally { Object.DestroyImmediate(bossObject); Object.DestroyImmediate(root); }
+    }
+
+    [Test]
+    public void ExplosivePresetHasExtraHealthAndDoubleRadius()
+    {
+        EnemyPreset preset = AssetDatabase.LoadAssetAtPath<EnemyPreset>("Assets/Data/Enemies/Explosive.asset");
+        Assert.That(preset.maxHealth, Is.EqualTo(60f));
+        Assert.That(preset.explosionRadius, Is.EqualTo(6f));
+    }
+
     [TestCase(40f, 1, 24f)]
     [TestCase(200f, 1, 120f)]
     [TestCase(40f, 3, 27.84f)]
@@ -224,7 +266,32 @@ public sealed class BalanceAndCameraTests
     }
 
     [Test]
-    public void MushroomOffspringLoseOneThirdOfTheirParentsHealthEachGeneration()
+    public void FoamSlowBuildsAndCapsAtEightyPercent()
+    {
+        var obj = new GameObject("Foam target");
+        try
+        {
+            MouseEnemy rat = obj.AddComponent<MouseEnemy>();
+            rat.ApplySlow(2f);
+            Assert.That(rat.SlowFraction, Is.EqualTo(0.2f).Within(0.001f));
+            for (int i = 0; i < 8; i++) rat.ApplySlow(2f);
+            Assert.That(rat.SlowFraction, Is.EqualTo(0.8f).Within(0.001f));
+        }
+        finally { Object.DestroyImmediate(obj); }
+    }
+
+    [Test]
+    public void MushroomOffspringSplitOnlyOnSuccessfulRoll()
+    {
+        MethodInfo canSplit = typeof(GameRun).GetMethod("MushroomCanSplit", BindingFlags.Static | BindingFlags.NonPublic);
+        Assert.That(canSplit.Invoke(null, new object[] { 0, 0.99f }), Is.True);
+        Assert.That(canSplit.Invoke(null, new object[] { 1, 0.49f }), Is.True);
+        Assert.That(canSplit.Invoke(null, new object[] { 2, 0.5f }), Is.False);
+        Assert.That(canSplit.Invoke(null, new object[] { 3, 0f }), Is.False);
+    }
+
+    [Test]
+    public void MushroomOffspringKeepSixtyFivePercentHealthEachGeneration()
     {
         var parentObject = new GameObject("Parent");
         var childObject = new GameObject("Child");
@@ -243,8 +310,8 @@ public sealed class BalanceAndCameraTests
             final.InitializeOffspring(grandchild);
             Assert.That(child.SplitGeneration, Is.EqualTo(1));
             Assert.That(grandchild.SplitGeneration, Is.EqualTo(2));
-            Assert.That(child.maxHealth, Is.EqualTo(80f * 0.67f).Within(0.001f));
-            Assert.That(grandchild.maxHealth, Is.EqualTo(80f * 0.67f * 0.67f).Within(0.001f));
+            Assert.That(child.maxHealth, Is.EqualTo(80f * 0.65f).Within(0.001f));
+            Assert.That(grandchild.maxHealth, Is.EqualTo(80f * 0.65f * 0.65f).Within(0.001f));
             Assert.That(child.movementSpeed, Is.EqualTo(6f).Within(0.001f));
             Assert.That(grandchild.movementSpeed, Is.EqualTo(7f).Within(0.001f));
             Assert.That(final.movementSpeed, Is.EqualTo(8f).Within(0.001f));
@@ -261,7 +328,7 @@ public sealed class BalanceAndCameraTests
     [TestCase(MouseEnemy.MouseVariant.Jumping, 36f, 4.8f, 2.4f)]
     [TestCase(MouseEnemy.MouseVariant.Tanky, 48f, 2.56f, 1.2f)]
     [TestCase(MouseEnemy.MouseVariant.Speedy, 12f, 3.2f, 4.8f)]
-    [TestCase(MouseEnemy.MouseVariant.Explosive, 24f, 2.56f, 1.2f)]
+    [TestCase(MouseEnemy.MouseVariant.Explosive, 36f, 2.56f, 1.2f)]
     public void RareRatStatsScaleFromTheNormalRat(
         MouseEnemy.MouseVariant variant, float health, float damage, float speed)
     {
