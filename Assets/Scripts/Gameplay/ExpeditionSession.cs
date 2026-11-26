@@ -55,6 +55,16 @@ namespace MouseKeeper
         static CampaignData campaignBeforeAutoRun;
         static float timeScaleBeforeAutoRun;
         public static bool AutoRun { get; private set; }
+        public const float AutoRunSpeed = 5f;
+        public const int AutoRunReplicates = 3;
+        internal static int AutoRunWorker { get; private set; }
+        internal static int AutoRunMapSeed { get; private set; }
+        internal static int AutoRunBatch => (AutoRunNumber - 1) / AutoRunReplicates;
+        internal static int AutoRunRepeat => (AutoRunNumber - 1) % AutoRunReplicates + 1;
+        static int autoRunBaseSeed;
+
+        internal static int AutoRunSeedFor(int baseSeed, int batch, int stream) =>
+            unchecked(baseSeed + batch * 104729 + stream * 7919);
         public static int AutoRunNumber { get; private set; }
 
         public static ExpeditionCatalog Catalog => catalog;
@@ -71,7 +81,7 @@ namespace MouseKeeper
         };
 
         public static float EnemyCountMultiplier(ExpeditionDifficulty difficulty) =>
-            difficulty == ExpeditionDifficulty.Swarm ? 2f : DifficultyMultiplier(difficulty);
+            DifficultyMultiplier(difficulty);
 
         public static float BossDifficultyMultiplier(ExpeditionDifficulty difficulty) => difficulty switch
         {
@@ -431,10 +441,21 @@ namespace MouseKeeper
 
         public static bool StartAutoRun(out string error)
         {
+            string[] args = Environment.GetCommandLineArgs();
+            string worker = Array.Find(args, arg => arg.StartsWith("--auto-run-worker=", StringComparison.Ordinal));
+            string seed = Array.Find(args, arg => arg.StartsWith("--auto-run-seed=", StringComparison.Ordinal));
+            return StartAutoRun(int.TryParse(worker?.Substring("--auto-run-worker=".Length), out int index) ? index : 1,
+                int.TryParse(seed?.Substring("--auto-run-seed=".Length), out int value) ? value : Environment.TickCount, out error);
+        }
+
+        public static bool StartAutoRun(int worker, int seed, out string error)
+        {
             if (AutoRun || !Initialize()) { error = "No se pudo iniciar Auto-run."; return false; }
             campaignBeforeAutoRun = data;
             timeScaleBeforeAutoRun = Time.timeScale;
             AutoRun = true;
+            AutoRunWorker = Mathf.Clamp(worker, 1, 8);
+            autoRunBaseSeed = seed;
             AutoRunNumber = 0;
             NextAutoRun();
             error = null;
@@ -444,35 +465,50 @@ namespace MouseKeeper
         public static void NextAutoRun()
         {
             if (!AutoRun) return;
+            AutoRunNumber++;
+            AutoRunMapSeed = AutoRunSeedFor(autoRunBaseSeed, AutoRunBatch, 0);
+            var team = new System.Random(AutoRunSeedFor(autoRunBaseSeed, AutoRunBatch, AutoRunWorker));
+            var shared = new System.Random(autoRunBaseSeed);
             data = NewCampaign(catalog);
             var availableAgents = new List<int>();
-            var availableSpecialties = new List<Specialty> { Specialty.Dps, Specialty.Medic, Specialty.Tank, Specialty.Locksmith, Specialty.Bard };
+            Specialty[] classes = { Specialty.Dps, Specialty.Medic, Specialty.Tank, Specialty.Locksmith, Specialty.Bard };
+            var combinations = new List<Specialty[]>();
+            for (int first = 0; first < classes.Length - 2; first++)
+                for (int second = first + 1; second < classes.Length - 1; second++)
+                    for (int third = second + 1; third < classes.Length; third++)
+                        combinations.Add(new[] { classes[first], classes[second], classes[third] });
+            int offset = (shared.Next(combinations.Count) + AutoRunBatch) % combinations.Count;
+            var availableSpecialties = new List<Specialty>(combinations[(offset + AutoRunWorker - 1) % combinations.Count]);
             var availableWeapons = new List<int>();
             for (int i = 0; i < catalog.weapons.Length; i++) availableWeapons.Add(i);
             for (int i = 0; i < catalog.agents.Length; i++) availableAgents.Add(i);
             for (int i = 0; i < SquadSize; i++)
             {
-                int agent = UnityEngine.Random.Range(0, availableAgents.Count);
+                int agent = team.Next(availableAgents.Count);
                 data.selectedAgents[i] = availableAgents[agent];
                 availableAgents.RemoveAt(agent);
                 if (availableWeapons.Count == 0)
                     for (int w = 0; w < catalog.weapons.Length; w++) availableWeapons.Add(w);
-                int weapon = UnityEngine.Random.Range(0, availableWeapons.Count);
+                int weapon = team.Next(availableWeapons.Count);
                 data.selectedWeapons[i] = availableWeapons[weapon];
                 availableWeapons.RemoveAt(weapon);
-                int specialty = UnityEngine.Random.Range(0, availableSpecialties.Count);
+                if (IsExclusiveSupport(catalog.weapons[data.selectedWeapons[i]]))
+                    availableWeapons.RemoveAll(index => IsExclusiveSupport(catalog.weapons[index]));
+                int specialty = team.Next(availableSpecialties.Count);
                 data.specialties[i] = availableSpecialties[specialty];
                 availableSpecialties.RemoveAt(specialty);
             }
             bool hasDamage = false;
             foreach (int index in data.selectedWeapons)
                 if ((catalog.weapons[index].tags & WeaponTags.DPS) != 0) hasDamage = true;
-            if (!hasDamage) data.selectedWeapons[UnityEngine.Random.Range(0, SquadSize)] = Array.IndexOf(catalog.weapons, catalog.basicWeapon);
-            data.difficulty = (ExpeditionDifficulty)UnityEngine.Random.Range(0, 4);
+            if (!hasDamage) data.selectedWeapons[team.Next(SquadSize)] = Array.IndexOf(catalog.weapons, catalog.basicWeapon);
+            data.difficulty = (ExpeditionDifficulty)((shared.Next(4) + AutoRunBatch) % 4);
             data.active = true;
-            AutoRunNumber++;
-            Time.timeScale = 3f;
+            Time.timeScale = AutoRunSpeed;
         }
+
+        internal static bool IsExclusiveSupport(WeaponDefinition weapon) =>
+            weapon is CheeseDecoyWeaponDefinition || weapon is BlowerWeaponDefinition;
 
         public static void StopAutoRun()
         {

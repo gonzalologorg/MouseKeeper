@@ -76,14 +76,7 @@ namespace MouseKeeper
             if (minimap != null) minimap.ClearRooms();
             Finished = false;
             message = null;
-            GenerateMaze();
-            foreach (Room room in rooms)
-            {
-                currentRoom = room;
-                BuildRoom(room);
-            }
-            BuildFloorNavigation();
-            currentRoom = null;
+            BuildExpeditionFloor();
             EnterRoom(rooms[0], -1);
         }
 
@@ -311,7 +304,7 @@ namespace MouseKeeper
                 keyboard != null && keyboard.spaceKey.isPressed);
             if (ExpeditionSession.AutoRun)
             {
-                Time.timeScale = 3f;
+                Time.timeScale = ExpeditionSession.AutoRunSpeed;
                 if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame) { StopAutoRun(); return; }
                 if (Finished) { RestartAutoRun(); return; }
             }

@@ -26,7 +26,7 @@
     {"key":"Normal · 1.0x","english":"Normal · 1.0x"},
     {"key":"Difícil · 1.5x (+1 sala)","english":"Hard · 1.5x (+1 room)"},
     {"key":"Enjambre · 2.5x (+2 salas)","english":"Swarm · 2.5x (+2 rooms)"},
-    {"key":"Enjambre · 2x enemigos (+2 salas)","english":"Swarm · 2x enemies (+2 rooms)"},
+    {"key":"Enjambre · 2.5x enemigos (+2 salas)","english":"Swarm · 2.5x enemies (+2 rooms)"},
     {"key":"El escuadrón ayudó a {0} a comprar un botiquín.","english":"The squad helped {0} buy a medkit."},
     {"key":"PLANIFICACIÓN DE EXPEDICIÓN","english":"EXPEDITION PLANNING"},
     {"key":"FIN DE LA CAMPAÑA","english":"CAMPAIGN OVER"},

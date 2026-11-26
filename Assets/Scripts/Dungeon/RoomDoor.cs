@@ -12,6 +12,7 @@ namespace MouseKeeper
         GameObject hint;
         float angle;
         bool open;
+        bool soundReady;
         public bool IsOpen => open;
 
         public void Initialize(GameObject archPrefab, GameObject doorPrefab)
@@ -58,8 +59,12 @@ namespace MouseKeeper
             collider.size = size;
         }
 
+        void Start() => soundReady = true;
+
         public void SetOpen(bool value)
         {
+            if (soundReady && open != value)
+                GameAudio.Play(value ? "world/door_open" : "world/door_close", transform.position);
             open = value;
             if (!open) barrier.enabled = true;
         }

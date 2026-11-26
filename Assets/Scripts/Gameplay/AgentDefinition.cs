@@ -11,6 +11,8 @@ namespace MouseKeeper
         public TextAsset file;
     }
 
+    public enum AgentVoice { Male, Female }
+
     [CreateAssetMenu(menuName = "MouseKeeper/Agente", fileName = "Nuevo Agente")]
     public sealed class AgentDefinition : ScriptableObject
     {
@@ -25,6 +27,11 @@ namespace MouseKeeper
         public WeaponDefinition startingWeapon;
         [Min(0)] public int missionCost = 5;
         public bool freeRecruit;
+        [Header("Voz")]
+        public AgentVoice voice;
+        [Range(-0.1f, 0.1f)] public float voicePitchOffset;
+        public float VoicePitch => (voice == AgentVoice.Female ? 1.12f : 0.96f) + voicePitchOffset;
+
         [Header("Diálogos localizables")]
         public LocalizedAgentDialogue[] dialogues;
     }

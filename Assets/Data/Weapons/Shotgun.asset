@@ -22,7 +22,7 @@ MonoBehaviour:
   modelRotation: {x: 0, y: 0, z: 0}
   modelScale: {x: 1, y: 1, z: 1}
   maxEnergy: 4
-  damage: 15
+  damage: 25
   attackInterval: 0.9
   range: 12
   primaryCost: 1

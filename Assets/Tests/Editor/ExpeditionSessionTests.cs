@@ -93,7 +93,7 @@ public sealed class ExpeditionSessionTests
             Assert.That(ExpeditionSession.StartAutoRun(out string error), Is.True, error);
             Assert.That(ExpeditionSession.Data, Is.Not.SameAs(data));
             Assert.That(ExpeditionSession.Active, Is.True);
-            Assert.That(Time.timeScale, Is.EqualTo(3f));
+            Assert.That(Time.timeScale, Is.EqualTo(5f));
             for (int runIndex = 0; runIndex < 20; runIndex++)
             {
                 CampaignData plan = ExpeditionSession.Data;
@@ -111,6 +111,28 @@ public sealed class ExpeditionSessionTests
         Assert.That(data.money, Is.EqualTo(37));
         Assert.That(data.active, Is.True);
         Assert.That(Time.timeScale, Is.EqualTo(originalScale));
+    }
+
+    [Test]
+    public void SeededAutoRunRepeatsThePlanThreeTimesAndReplaysAcrossSessions()
+    {
+        string Plan() => JsonUtility.ToJson(ExpeditionSession.Data);
+        try
+        {
+            Assert.That(ExpeditionSession.StartAutoRun(1, 20261125, out _), Is.True);
+            string first = Plan();
+            ExpeditionSession.NextAutoRun();
+            Assert.That(Plan(), Is.EqualTo(first));
+            ExpeditionSession.NextAutoRun();
+            Assert.That(Plan(), Is.EqualTo(first));
+            ExpeditionSession.NextAutoRun();
+            Assert.That(Plan(), Is.Not.EqualTo(first));
+            ExpeditionSession.StopAutoRun();
+
+            Assert.That(ExpeditionSession.StartAutoRun(1, 20261125, out _), Is.True);
+            Assert.That(Plan(), Is.EqualTo(first));
+        }
+        finally { ExpeditionSession.StopAutoRun(); }
     }
 
     [Test]
@@ -133,7 +155,7 @@ public sealed class ExpeditionSessionTests
         Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Normal), Is.EqualTo(0.75f));
         Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Hard), Is.EqualTo(1.25f));
         Assert.That(ExpeditionSession.BossDifficultyMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(1.5f));
-        Assert.That(ExpeditionSession.EnemyCountMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(2f));
+        Assert.That(ExpeditionSession.EnemyCountMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(2.5f));
         Assert.That(ExpeditionSession.DifficultyMultiplier(ExpeditionDifficulty.Swarm), Is.EqualTo(2.5f));
     }
 

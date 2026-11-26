@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace MouseKeeper
@@ -30,7 +31,8 @@ namespace MouseKeeper
             var cloud = new GameObject("Poison Cloud");
             cloud.transform.SetParent(currentRoom.root.transform, true);
             cloud.transform.position = origin + Vector3.up * 0.4f;
-            cloud.AddComponent<PoisonHazard>().Initialize(origin, radius);
+            var hazard = cloud.AddComponent<PoisonHazard>();
+            hazard.Initialize(origin, radius);
             HazardRadiusIndicator.Create(cloud.transform, cloud.transform, radius, -0.36f, null);
             var particles = cloud.AddComponent<ParticleSystem>();
             particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -46,28 +48,41 @@ namespace MouseKeeper
             var emission = particles.emission;
             emission.rateOverTime = 35f;
             particles.Play();
-            StartCoroutine(PoisonAgents(currentRoom, cloud, origin, radius, damagePerSecond, duration));
+            StartCoroutine(PoisonAgents(currentRoom, hazard, damagePerSecond, duration));
         }
 
-        IEnumerator PoisonAgents(Room room, GameObject cloud, Vector3 origin, float radius, float damagePerSecond, float duration)
+        IEnumerator PoisonAgents(Room room, PoisonHazard hazard, float damagePerSecond, float duration)
         {
+            var exposure = new Dictionary<PlayerController, float>();
             float elapsed = 0f;
-            while (elapsed < duration && currentRoom == room && !Finished)
+            while (elapsed < duration && currentRoom == room && !Finished && hazard != null)
             {
-                float interval = Mathf.Min(1f, duration - elapsed);
-                yield return new WaitForSeconds(interval);
-                if (currentRoom != room || Finished || cloud == null) break;
-                elapsed += interval;
-                foreach (PlayerController agent in agents.ToArray())
+                yield return null;
+                if (currentRoom != room || Finished || hazard == null) break;
+                float delta = Mathf.Min(Time.deltaTime, duration - elapsed);
+                elapsed += delta;
+                foreach (PlayerController agent in agents)
                 {
                     if (agent == null || agent.Dead) continue;
-                    Vector3 offset = agent.transform.position - origin;
-                    offset.y = 0f;
-                    if (offset.sqrMagnitude <= radius * radius)
-                        agent.TakeDamage(damagePerSecond * interval, sourcePosition: origin, damageSource: "poison_cloud");
+                    Vector3 offset = Vector3.ProjectOnPlane(agent.transform.position - hazard.Origin, Vector3.up);
+                    if (offset.sqrMagnitude > hazard.Radius * hazard.Radius)
+                    {
+                        exposure.Remove(agent);
+                        continue;
+                    }
+
+                    exposure.TryGetValue(agent, out float seconds);
+                    seconds += delta;
+                    if (seconds >= 1f)
+                    {
+                        hazard.MarkAffected(agent);
+                        agent.TakeDamage(damagePerSecond, sourcePosition: hazard.Origin, damageSource: "poison_cloud");
+                        seconds -= 1f;
+                    }
+                    exposure[agent] = seconds;
                 }
             }
-            if (cloud != null) Destroy(cloud);
+            if (hazard != null) Destroy(hazard.gameObject);
         }
 
         public void ExplodeMouse(MouseEnemy mouse, float radius, float damage)
@@ -102,6 +117,7 @@ namespace MouseKeeper
 
         public void MouseDefeated(MouseEnemy mouse)
         {
+            GameAudio.PlayRatDeath(mouse.transform.position);
             miceDefeated++;
             ChangeScore(MouseScore(mouse == currentRoom.boss, mouse.Variant, mouse.SplitGeneration));
             ShakeCameraOnDeath();
@@ -202,6 +218,9 @@ namespace MouseKeeper
 
     sealed class PoisonHazard : MonoBehaviour
     {
+        readonly HashSet<PlayerController> affected = new HashSet<PlayerController>();
+        public bool HasAffected(PlayerController agent) => affected.Contains(agent);
+        public void MarkAffected(PlayerController agent) => affected.Add(agent);
         public Vector3 Origin { get; private set; }
         public float Radius { get; private set; }
         public void Initialize(Vector3 origin, float radius) { Origin = origin; Radius = radius; }

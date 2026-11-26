@@ -16,6 +16,8 @@ namespace MouseKeeper
         [Tooltip("Propiedades combinables usadas por las especialidades al elegir armas.")]
         public WeaponTags tags = WeaponTags.DPS;
         public Sprite icon;
+        [Tooltip("Variantes de audio elegidas al activar el arma.")]
+        public AudioClip[] attackSounds;
         [Tooltip("Visual-only model or prefab used by the agent and the pickup. Model Mesh takes precedence when assigned.")]
         public GameObject modelPrefab;
         [Tooltip("Optional mesh override. Assign a material to control its appearance.")]

@@ -8,6 +8,8 @@ namespace MouseKeeper
         public float Energy { get; private set; }
         public bool IsReloading => reloadRemaining > 0f;
         public float PrimaryInterval => Mathf.Max(0f, Definition.attackInterval) / attackSpeed;
+        internal bool SecondaryAttack { get; private set; }
+        internal int PulseGroupSize { get; set; }
         float cooldown;
         float reloadRemaining;
         float attackSpeed = 1f;
@@ -29,13 +31,18 @@ namespace MouseKeeper
             reloadSpeed = Mathf.Lerp(0.75f, 1.5f, (Mathf.Clamp(agility, 1, 10) - 1) / 9f) * reloadMultiplier;
         }
 
-        public bool TrySpend(float cost, float interval)
+        public bool TrySpend(float cost, float interval, bool secondary = false)
         {
             cost = Mathf.Max(0f, cost);
             if (cooldown > 0f || IsReloading || Energy < cost) return false;
+            SecondaryAttack = secondary;
             Energy -= cost;
             cooldown = Mathf.Max(0f, interval) / attackSpeed;
-            if (owner != null) owner.RecordBalanceAttack(this, cost);
+            if (owner != null)
+            {
+                owner.RecordBalanceAttack(this, cost);
+                GameAudio.PlayVariant(Definition.attackSounds, owner.transform.position);
+            }
             return true;
         }
 

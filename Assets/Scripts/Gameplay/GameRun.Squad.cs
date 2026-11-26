@@ -219,6 +219,7 @@ namespace MouseKeeper
             Vector3 position = agent.transform.position, away = Vector3.zero;
             foreach (PoisonHazard hazard in currentRoom.root.GetComponentsInChildren<PoisonHazard>())
             {
+                if (!hazard.HasAffected(agent)) continue;
                 Vector3 delta = position - hazard.Origin; delta.y = 0f;
                 if (delta.sqrMagnitude < (hazard.Radius + 0.8f) * (hazard.Radius + 0.8f))
                     away += (delta.sqrMagnitude > 0.001f ? delta.normalized : Vector3.right) * (hazard.Radius + 1.5f - delta.magnitude);
@@ -439,7 +440,9 @@ namespace MouseKeeper
             foreach (PlayerController other in agents)
             {
                 if (other == null || other == agent || other.Dead || other.Weapons[0] == null) continue;
-                if (other.Weapons[0].Definition == candidate.Definition) return false;
+                if (other.Weapons[0].Definition == candidate.Definition ||
+                    (ExpeditionSession.IsExclusiveSupport(candidate.Definition) &&
+                     ExpeditionSession.IsExclusiveSupport(other.Weapons[0].Definition))) return false;
                 if ((other.Weapons[0].Definition.tags & WeaponTags.DPS) != 0) otherDps = true;
             }
             WeaponInstance current = agent.Weapons[0];
@@ -593,7 +596,7 @@ namespace MouseKeeper
             {
                 int index = (start + offset) % agents.Count;
                 PlayerController agent = agents[index];
-                if (agent == null || agent.Dead || agent.Money < pickup.Price) continue;
+                if (agent == null || agent.Dead || agent.Money < pickup.Price || !pickup.CanPickUp(agent)) continue;
                 orderedWeapon = pickup;
                 weaponAssignee = agent;
                 weaponAssigneeIndex = index;

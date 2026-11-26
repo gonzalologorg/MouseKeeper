@@ -23,6 +23,7 @@ namespace MouseKeeper
 
         public bool Finished { get; private set; }
         public bool IsTransitioning { get; private set; }
+        internal bool IsBoss(MouseEnemy mouse) => bossRoom != null && bossRoom.boss == mouse;
         public Transform CurrentRoom => currentRoom != null ? currentRoom.root.transform : null;
         readonly List<Room> rooms = new List<Room>();
         readonly List<PlayerController> agents = new List<PlayerController>();
@@ -169,6 +170,8 @@ namespace MouseKeeper
                 enabled = false;
                 return;
             }
+            if (ExpeditionSession.AutoRun)
+                UnityEngine.Random.InitState(ExpeditionSession.AutoRunSeedFor(ExpeditionSession.AutoRunMapSeed, 0, ExpeditionSession.AutoRunWorker));
             if (!LoadAgentProfiles())
             {
                 enabled = false;
@@ -177,23 +180,21 @@ namespace MouseKeeper
             CreateSquad();
             InitializeBalanceTelemetry();
             minimap = FindAnyObjectByType<Minimap>();
-            GenerateMaze();
-            foreach (Room room in rooms)
-            {
-                currentRoom = room;
-                BuildRoom(room);
-            }
-            BuildFloorNavigation();
-            currentRoom = null;
+            BuildExpeditionFloor();
             if (IntroSequence.ConsumeArrival()) StartCoroutine(EnterFromIntro(rooms[0]));
             else EnterRoom(rooms[0], -1);
         }
 
         void CreateSquad()
         {
+            var autoRunLuck = ExpeditionSession.AutoRun
+                ? new System.Random(ExpeditionSession.AutoRunSeedFor(ExpeditionSession.AutoRunMapSeed, 0, 100 + ExpeditionSession.AutoRunWorker))
+                : null;
             for (int i = 0; i < profiles.Length; i++)
             {
                 AgentProfile profile = profiles[i];
+                int luckUpgrade = ExpeditionSession.Data.progress[ExpeditionSession.Data.selectedAgents[i]].luck;
+                profile.luck = Mathf.Min(10, (autoRunLuck?.Next(1, 11) ?? UnityEngine.Random.Range(1, 11)) + luckUpgrade);
                 AgentDefinition definition = squad != null && squad.Length > 0 ? squad[i] : null;
                 var root = new GameObject(profile.name);
                 var controller = root.AddComponent<CharacterController>();
@@ -215,6 +216,7 @@ namespace MouseKeeper
                 root.AddComponent<AgentOcclusionIndicator>().Initialize();
                 PlayerController agent = root.AddComponent<PlayerController>();
                 agent.Initialize(this, profile);
+                if (definition != null) agent.SetVoicePitch(definition.VoicePitch);
                 agent.SetSpecialty(ExpeditionSession.Data.specialties != null ? ExpeditionSession.Data.specialties[i] : Specialty.None);
                 WeaponDefinition startingWeapon = ExpeditionSession.Active
                     ? ExpeditionSession.Catalog.weapons[ExpeditionSession.Data.selectedWeapons[i]]

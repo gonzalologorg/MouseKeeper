@@ -9,19 +9,28 @@ namespace MouseKeeper
     {
         [Serializable] sealed class BalanceReport
         {
-            public int schema_version = 2;
+            public int schema_version = 3;
             public string run_id, started_utc, finished_utc, outcome, game_version, difficulty;
             public bool editor_build, debug_commands_used, auto_run;
-            public int auto_run_number;
+            public int auto_run_number, auto_run_worker, auto_run_batch, auto_run_repeat, map_seed;
             public float difficulty_multiplier, duration_game_seconds, duration_real_seconds, duration_wall_seconds;
             public int configured_mice_per_room;
             public float configured_spawn_interval, base_room_width, base_room_depth;
             public int final_floor, rooms_cleared, mice_killed;
             public double final_score;
+            public List<string> map_floors = new List<string>();
+            public List<BalancePulse> pulse = new List<BalancePulse>();
             public List<BalanceAgent> agents = new List<BalanceAgent>();
             public List<BalanceRoom> rooms = new List<BalanceRoom>();
             public List<BalanceEnemy> enemies = new List<BalanceEnemy>();
             public List<BalanceEvent> events = new List<BalanceEvent>();
+        }
+
+        [Serializable] sealed class BalancePulse
+        {
+            public string mode;
+            public int group_size, activations, kills;
+            public float energy_spent, effective_damage, energy_per_kill, damage_per_activation;
         }
 
         [Serializable] sealed class BalanceAgent
@@ -94,6 +103,10 @@ namespace MouseKeeper
                 run_id = id, started_utc = now.ToString("o"), outcome = "in_progress",
                 game_version = Application.version, difficulty = ExpeditionSession.Difficulty.ToString(),
                 auto_run = ExpeditionSession.AutoRun, auto_run_number = ExpeditionSession.AutoRun ? ExpeditionSession.AutoRunNumber : 0,
+                auto_run_worker = ExpeditionSession.AutoRun ? ExpeditionSession.AutoRunWorker : 0,
+                auto_run_batch = ExpeditionSession.AutoRun ? ExpeditionSession.AutoRunBatch + 1 : 0,
+                auto_run_repeat = ExpeditionSession.AutoRun ? ExpeditionSession.AutoRunRepeat : 0,
+                map_seed = ExpeditionSession.AutoRun ? ExpeditionSession.AutoRunMapSeed : 0,
                 difficulty_multiplier = ExpeditionSession.DifficultyMultiplier(ExpeditionSession.Difficulty), editor_build = Application.isEditor,
                 configured_mice_per_room = micePerRoom, configured_spawn_interval = mouseSpawnInterval,
                 base_room_width = roomWidth, base_room_depth = roomDepth
@@ -116,6 +129,11 @@ namespace MouseKeeper
             }
             try
             {
+                const string outputOption = "--balance-output=";
+                string outputArgument = Array.Find(Environment.GetCommandLineArgs(),
+                    argument => argument.StartsWith(outputOption, StringComparison.Ordinal));
+                if (outputDirectory == null && outputArgument?.Length > outputOption.Length)
+                    outputDirectory = outputArgument.Substring(outputOption.Length);
 #if UNITY_EDITOR
                 string basePath = outputDirectory ?? Path.GetFullPath(Path.Combine(Application.dataPath, "..", "BalanceRuns"));
 #else
@@ -130,6 +148,26 @@ namespace MouseKeeper
             {
                 Debug.LogWarning("No se pudo crear el registro de balance: " + e.Message);
             }
+        }
+
+        void RecordBalanceFloorLayout()
+        {
+            if (balanceReport == null) return;
+            var layout = new System.Text.StringBuilder();
+            foreach (Room room in rooms)
+            {
+                int doors = 0;
+                for (int i = 0; i < room.neighbours.Length; i++)
+                    if (room.neighbours[i] != null) doors |= 1 << i;
+                RoomLayout template = room.root.GetComponentInChildren<RoomLayout>();
+                layout.Append(room.position).Append(':').Append(room.kind).Append(':')
+                    .Append(room.width.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append('x')
+                    .Append(room.depthSize.ToString(System.Globalization.CultureInfo.InvariantCulture)).Append(':')
+                    .Append(doors).Append(':').Append(room == bossRoom ? 'B' : '-').Append(':')
+                    .Append(template != null ? template.name : "").Append(';');
+            }
+            balanceReport.map_floors.Add(layout.ToString());
+            SaveBalanceTelemetry();
         }
 
         static string WeaponName(WeaponInstance weapon) => weapon != null && weapon.Definition != null ? weapon.Definition.name : "";
@@ -253,7 +291,29 @@ namespace MouseKeeper
             string name = WeaponName(weapon);
             BalanceWeapon item = BalanceWeaponFor(stats, name);
             if (item != null) { DescribeBalanceWeapon(item, weapon); item.activations++; }
-            BalanceLog("weapon_activation", agent, null, name, "", energyCost);
+            if (weapon.Definition is PulseWeaponDefinition)
+            {
+                weapon.PulseGroupSize = 0;
+                if (CurrentRoom != null)
+                    foreach (MouseEnemy mouse in CurrentRoom.GetComponentsInChildren<MouseEnemy>())
+                        if (mouse.IsTargetable) weapon.PulseGroupSize++;
+
+                BalancePulse pulse = PulseStats(weapon);
+                pulse.activations++;
+                pulse.energy_spent += energyCost;
+                BalanceLog("weapon_activation", agent, null, name, "", energyCost, detail: pulse.mode);
+            }
+            else BalanceLog("weapon_activation", agent, null, name, "", energyCost);
+        }
+
+        BalancePulse PulseStats(WeaponInstance weapon)
+        {
+            string mode = weapon.SecondaryAttack ? "secondary" : "primary";
+            foreach (BalancePulse row in balanceReport.pulse)
+                if (row.mode == mode && row.group_size == weapon.PulseGroupSize) return row;
+            var created = new BalancePulse { mode = mode, group_size = weapon.PulseGroupSize };
+            balanceReport.pulse.Add(created);
+            return created;
         }
 
         internal void RecordBalanceEnemyDamage(PlayerController agent, MouseEnemy mouse, WeaponInstance weapon,
@@ -267,6 +327,7 @@ namespace MouseKeeper
                 BalanceWeapon item = BalanceWeaponFor(stats, WeaponName(weapon ?? attributionWeapon));
                 if (item != null) { if (weapon != null) item.hits++; item.effective_damage += effective; item.overkill_damage += overkill; if (critical) item.critical_hits++; }
             }
+            if (weapon?.Definition is PulseWeaponDefinition) PulseStats(weapon).effective_damage += effective;
             BalanceEnemy enemy = BalanceEnemyFor(mouse);
             if (enemy != null) enemy.damage_received += effective;
             BalanceLog("enemy_damage", agent, null, weapon != null ? WeaponName(weapon) : source, EnemyName(mouse), effective, overkill, critical,
@@ -352,6 +413,7 @@ namespace MouseKeeper
                 BalanceWeapon item = BalanceWeaponFor(stats, WeaponName(weapon));
                 if (item != null) item.kills++;
             }
+            if (weapon?.Definition is PulseWeaponDefinition) PulseStats(weapon).kills++;
             BalanceEnemy enemy = BalanceEnemyFor(mouse);
             if (enemy != null) enemy.killed++;
             if (balanceRoom != null) balanceRoom.enemies_killed++;
@@ -378,6 +440,11 @@ namespace MouseKeeper
         void SnapshotBalanceTelemetry()
         {
             if (balanceReport == null) return;
+            foreach (BalancePulse pulse in balanceReport.pulse)
+            {
+                pulse.energy_per_kill = pulse.kills > 0 ? pulse.energy_spent / pulse.kills : 0f;
+                pulse.damage_per_activation = pulse.activations > 0 ? pulse.effective_damage / pulse.activations : 0f;
+            }
             if (balanceWallClock != null) balanceReport.duration_wall_seconds = (float)balanceWallClock.Elapsed.TotalSeconds;
             balanceReport.final_floor = levelIndex + 1;
             balanceReport.final_score = score;

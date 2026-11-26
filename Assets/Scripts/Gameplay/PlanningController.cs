@@ -21,6 +21,7 @@ namespace MouseKeeper
         int selectedSlot;
         string error;
         bool ready;
+        static bool commandLineAutoRunHandled;
         readonly Dictionary<TextElement, string> staticText = new Dictionary<TextElement, string>();
 #if UNITY_EDITOR
         Label debugStatus;
@@ -40,6 +41,18 @@ namespace MouseKeeper
 
         void Start()
         {
+            if (!commandLineAutoRunHandled && Array.Exists(Environment.GetCommandLineArgs(),
+                argument => argument == "--auto-run"))
+            {
+                commandLineAutoRunHandled = true;
+                if (ExpeditionSession.StartAutoRun(out error))
+                {
+                    Application.runInBackground = true;
+                    SceneManager.LoadScene("SampleScene");
+                    return;
+                }
+                Debug.LogError(error, this);
+            }
             UIDocument document = GetComponent<UIDocument>();
             if (layout == null && document != null) layout = document.visualTreeAsset;
             if (panelSettings == null && document != null) panelSettings = document.panelSettings;
@@ -523,7 +536,7 @@ namespace MouseKeeper
             menu.AddItem(GameText.Get("Fácil · 0.5x"), false, () => Launch(ExpeditionDifficulty.Easy));
             menu.AddItem(GameText.Get("Normal · 1.0x"), false, () => Launch(ExpeditionDifficulty.Normal));
             menu.AddItem(GameText.Get("Difícil · 1.5x (+1 sala)"), false, () => Launch(ExpeditionDifficulty.Hard));
-            menu.AddItem(GameText.Get("Enjambre · 2x enemigos (+2 salas)"), false, () => Launch(ExpeditionDifficulty.Swarm));
+            menu.AddItem(GameText.Get("Enjambre · 2.5x enemigos (+2 salas)"), false, () => Launch(ExpeditionDifficulty.Swarm));
             menu.DropDown(button.worldBound, button, DropdownMenuSizeMode.Content);
         }
 

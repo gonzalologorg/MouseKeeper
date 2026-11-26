@@ -6,6 +6,29 @@ namespace MouseKeeper
 {
     public sealed partial class GameRun
     {
+        void BuildExpeditionFloor()
+        {
+            Random.State combatRandom = Random.state;
+            if (ExpeditionSession.AutoRun)
+                Random.InitState(ExpeditionSession.AutoRunSeedFor(ExpeditionSession.AutoRunMapSeed, levelIndex, 0));
+            try
+            {
+                GenerateMaze();
+                foreach (Room room in rooms)
+                {
+                    currentRoom = room;
+                    BuildRoom(room);
+                }
+                BuildFloorNavigation();
+                currentRoom = null;
+                RecordBalanceFloorLayout();
+            }
+            finally
+            {
+                if (ExpeditionSession.AutoRun) Random.state = combatRandom;
+            }
+        }
+
         void GenerateMaze()
         {
             widthPhase = Random.Range(0, 3);
@@ -214,31 +237,40 @@ namespace MouseKeeper
             if (departureDoor != null) { departureDoor.SetHint(false); departureDoor.SetOpen(true); }
             if (arrivalDoor != null) arrivalDoor.SetOpen(true);
             if (departureDoor != null || arrivalDoor != null) yield return new WaitForSeconds(0.55f);
-            float[] travelTime = new float[agents.Count];
-            bool[] rescued = new bool[agents.Count];
-            for (int phase = 0; phase < 2; phase++)
-            {
-                for (int i = 0; i < agents.Count; i++)
-                    if (agents[i] != null && !agents[i].Dead && !rescued[i])
-                        agents[i].SetDestination(doorway + forward * (phase == 0 ? -1.6f : 2f) + side * ((i - 1) * 0.8f));
-                bool arrived;
-                do
+            var crossing = new List<PlayerController>();
+            foreach (PlayerController agent in agents)
+                if (agent != null && !agent.Dead)
                 {
-                    arrived = true;
-                    for (int i = 0; i < agents.Count; i++)
-                    {
-                        PlayerController agent = agents[i];
-                        if (agent == null || agent.Dead || rescued[i] || agent.ReachedDestination) continue;
-                        travelTime[i] += Time.deltaTime;
-                        if (travelTime[i] >= 5f)
-                        {
-                            RescueTransitionAgent(agent, doorway + forward * 2f + side * ((i - 1) * 0.8f), "room_transition");
-                            rescued[i] = true;
-                        }
-                        else arrived = false;
-                    }
+                    agent.CancelMoveOrder();
+                    crossing.Add(agent);
+                }
+            crossing.Sort((a, b) => (a.transform.position - doorway).sqrMagnitude
+                .CompareTo((b.transform.position - doorway).sqrMagnitude));
+
+            // Cross the center of the opening before fanning out inside the next room.
+            for (int i = 0; i < crossing.Count; i++)
+            {
+                PlayerController agent = crossing[i];
+                Vector3 inside = doorway + forward * 2.6f + side * ((i - 1) * 0.95f);
+                agent.SetDoorCrossing(doorway + forward * 0.85f, inside);
+                float stalled = 0f;
+                Vector3 anchor = agent.transform.position;
+                while (!Finished && !agent.Dead && !agent.ReachedDestination)
+                {
                     yield return null;
-                } while (!arrived);
+                    if ((agent.transform.position - anchor).sqrMagnitude >= 0.25f)
+                    {
+                        anchor = agent.transform.position;
+                        stalled = 0f;
+                    }
+                    else stalled += Time.deltaTime;
+                    if (stalled >= 5f)
+                    {
+                        RescueTransitionAgent(agent, inside, "room_transition");
+                        break;
+                    }
+                }
+                if (Finished) yield break;
             }
             currentRoom = next;
             previousRoom = previous;
@@ -251,7 +283,9 @@ namespace MouseKeeper
 
         void RescueTransitionAgent(PlayerController agent, Vector3 position, string reason)
         {
-            position.y = 0.05f;
+            if (UnityEngine.AI.NavMesh.SamplePosition(position, out var safe, 1.5f, UnityEngine.AI.NavMesh.AllAreas))
+                position = safe.position;
+            position.y += 0.05f;
             agent.RecoverNavigationPosition(position, true);
             BalanceLog("agent_unstuck", agent, null, reason, "", 5f);
         }
@@ -492,7 +526,7 @@ namespace MouseKeeper
             int world = LayerMask.NameToLayer("World");
             if (world < 0)
             {
-                Debug.LogError("La capa World no está configurada.");
+                Debug.LogError("La capa World no estÃ¡ configurada.");
                 return;
             }
             foreach (Transform child in root.GetComponentsInChildren<Transform>(true)) child.gameObject.layer = world;
@@ -525,7 +559,7 @@ namespace MouseKeeper
         }
 
         const int BossRatLimit = 5;
-        const float BossRatSpawnInterval = 2.66f;
+        const float BossRatSpawnInterval = 2.66f / 1.25f;
 
         static float BossHealthMultiplier(int livingAgents) => 3f * Mathf.Max(1, livingAgents);
 
@@ -542,8 +576,9 @@ namespace MouseKeeper
             Room room = currentRoom;
             if (room == null || room.boss != mouse || mouse.maxHealth <= 0f || room.bossDefeated) return;
             int crossed = Mathf.Clamp(Mathf.FloorToInt((1f - Mathf.Clamp01(remainingHealth / mouse.maxHealth)) * 10f + 0.00001f), 0, 10);
-            int added = crossed - room.bossDamageThresholds;
-            if (added <= 0) return;
+            if (crossed <= room.bossDamageThresholds) return;
+            int added = Mathf.FloorToInt(crossed * 1.25f + 0.5f) -
+                Mathf.FloorToInt(room.bossDamageThresholds * 1.25f + 0.5f);
             room.bossDamageThresholds = crossed;
             room.pendingBossRats += added;
             room.bossSpawnOrigin = mouse.transform.position;
@@ -816,7 +851,15 @@ namespace MouseKeeper
             {
                 int livingAgents = 0;
                 foreach (PlayerController agent in agents) if (agent != null && !agent.Dead) livingAgents++;
-                mouse.maxHealth *= BossHealthMultiplier(livingAgents) * ExpeditionSession.BossDifficultyMultiplier(ExpeditionSession.Difficulty);
+                ExpeditionDifficulty difficulty = ExpeditionSession.Difficulty;
+                float healthFactor = difficulty switch
+                {
+                    ExpeditionDifficulty.Easy => 0.80f,
+                    ExpeditionDifficulty.Hard => 0.90f,
+                    ExpeditionDifficulty.Swarm => 0.95f,
+                    _ => 0.85f
+                };
+                mouse.maxHealth *= BossHealthMultiplier(livingAgents) * ExpeditionSession.BossDifficultyMultiplier(difficulty) * healthFactor;
             }
             mouse.attackDamage *= levelMultiplier;
             mouse.attackInterval /= levelMultiplier;

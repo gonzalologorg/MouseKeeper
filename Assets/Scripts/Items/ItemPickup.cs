@@ -45,6 +45,7 @@ namespace MouseKeeper
         public bool CanPickUp(PlayerController player)
         {
             return Available && !player.Dead &&
+                (weapon == null || !ExpeditionSession.IsExclusiveSupport(weapon.Definition) || player.CanTakeExclusiveSupport(weapon)) &&
                 (Kind != PickupKind.Health || player.Health < player.MaxHealth) &&
                 (Kind != PickupKind.Health || player.CanTakeHealth()) &&
                 (!lowestHealthOnly || player.IsLowestHealthAgent()) &&
@@ -106,6 +107,7 @@ namespace MouseKeeper
             else if (health != null) player.Heal(health.amount, source: "health_pickup");
             else if (money != null) player.CollectMoney(money.amount);
             consumed = true;
+            GameAudio.PlayPickup(kind, transform.position);
             player.RecordBalancePickup(kind, DisplayName, price);
             if (!IsEmergencyWeapon) player.RecordPickupScore(kind, price);
             player.NotifyLootCollected(kind, usedGreed, purchased);

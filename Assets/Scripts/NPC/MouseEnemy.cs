@@ -513,7 +513,7 @@ namespace MouseKeeper
         {
             if (IsBleeding || defeated || source == null) return;
             bleedUntil = Time.time + 3f;
-            ApplyDamageOverTime(source, maxHealth * 0.3f, 3, "bleed", weapon);
+            ApplyDamageOverTime(source, maxHealth * (run.IsBoss(this) ? 0.15f : 0.225f), 3, "bleed", weapon);
         }
     }
 }

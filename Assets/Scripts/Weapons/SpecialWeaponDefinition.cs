@@ -6,11 +6,13 @@ namespace MouseKeeper
     {
         public sealed override void PrimaryAttack(PlayerController player, WeaponInstance weapon)
         {
-            if (weapon.TrySpend(primaryCost, GetPrimaryInterval(player)))
+            if (CanPrimaryAttack(player) && weapon.TrySpend(primaryCost, GetPrimaryInterval(player)))
                 PerformPrimaryAttack(player, weapon);
         }
 
         public override void SecondaryAttack(PlayerController player, WeaponInstance weapon) { }
+
+        protected virtual bool CanPrimaryAttack(PlayerController player) => true;
 
         protected virtual float GetPrimaryInterval(PlayerController player) => attackInterval;
 

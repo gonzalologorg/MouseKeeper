@@ -19,6 +19,8 @@ MonoBehaviour:
   modelPosition: {x: 0, y: 0, z: 0}
   modelRotation: {x: 0, y: 0, z: 0}
   modelScale: {x: 1, y: 1, z: 1}
+  attackSounds:
+  - {fileID: 8300000, guid: b7e910c4b969f1844ba9ee75f75b6beb, type: 3}
   maxEnergy: 12
   damage: 20
   attackInterval: 0.25

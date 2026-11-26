@@ -25,6 +25,8 @@ MonoBehaviour:
     distrust: 8
     greed: 6
     teamwork: 7
+  voice: 1
+  voicePitchOffset: -0.012
   modelPrefab: {fileID: 0}
   placeholderColor: {r: 0.31500003, g: 0.9, b: 0.31500006, a: 1}
   startingWeapon: {fileID: 11400000, guid: 4cfbbe928bce41a498137fec1ab16444, type: 2}

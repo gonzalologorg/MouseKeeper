@@ -9,7 +9,7 @@ namespace MouseKeeper
 
         public override void SecondaryAttack(PlayerController player, WeaponInstance weapon)
         {
-            if (weapon.TrySpend(secondaryCost, attackInterval * 2f))
+            if (weapon.TrySpend(secondaryCost, attackInterval * 2f, secondary: true))
                 player.DamageMiceInRoom(pulseDamage, weapon);
         }
     }

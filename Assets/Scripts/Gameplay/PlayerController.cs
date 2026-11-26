@@ -31,6 +31,8 @@ namespace MouseKeeper
         CharacterController controller;
         NavigationMotor navigation;
         WeaponVisual weaponVisual;
+        float voicePitch = 1f;
+        float nextDamageVoice;
         GameRun run;
         AgentProfile profile;
         Vector3 destination;
@@ -438,6 +440,12 @@ namespace MouseKeeper
             hasDestination = true;
         }
 
+        internal void SetDoorCrossing(Vector3 doorway, Vector3 inside)
+        {
+            SetDestination(doorway);
+            corridorWaypoints.Enqueue(inside);
+        }
+
         public void IssueCorridorPath(IReadOnlyList<Vector3> points)
         {
             if (points == null || points.Count == 0) return;
@@ -621,6 +629,8 @@ namespace MouseKeeper
         internal bool TryPayForPickup(ItemPickup pickup) => run.TryPayForPickup(this, pickup);
 
         public bool CanCollect(ItemPickup pickup) => run.PickupOwner(pickup) == this;
+        internal bool CanTakeExclusiveSupport(WeaponInstance weapon) => run.CanAdoptWeapon(this, weapon);
+
         public bool CanTakeHealth() => run.CanTakeHealth(this);
         public bool IsLowestHealthAgent() => run.IsLowestHealthAgent(this);
         public bool IsLastSurvivor => run != null && run.IsLastSurvivingAgent(this);
@@ -772,12 +782,17 @@ namespace MouseKeeper
             Destroy(effect, 2f);
         }
 
+        internal void SetVoicePitch(float pitch) => voicePitch = pitch;
+
         public void TakeDamage(float amount, MouseEnemy attacker = null, Vector3? impact = null, Vector3? sourcePosition = null, string damageSource = "unknown")
         {
             if (Dead || EscapeInvulnerable || amount <= 0f) return;
             amount = Mathf.Ceil(amount);
             float previousHealth = Health;
             Health = Mathf.Max(0f, Health - amount);
+            if (Health < previousHealth && Time.unscaledTime >= nextDamageVoice &&
+                GameAudio.Play("fx/cough_short", transform.position, voicePitch))
+                nextDamageVoice = Time.unscaledTime + GameAudio.Range(3f, 6f);
             run.RecordBalanceDamageReceived(this, attacker, previousHealth - Health, Mathf.Max(0f, amount - previousHealth), damageSource);
             Bounds bounds = controller.bounds;
             Vector3 source = sourcePosition ?? (attacker != null ? attacker.transform.position : bounds.center - transform.forward);

@@ -192,7 +192,7 @@ namespace MouseKeeper
                 return;
             }
             if (ExpeditionSession.AutoRun)
-                GUI.Label(new Rect(15f, 78f, 300f, 22f), "AUTO-RUN #" + ExpeditionSession.AutoRunNumber + " · x3 · " + ExpeditionSession.Difficulty);
+                GUI.Label(new Rect(15f, 78f, 300f, 22f), "AUTO-RUN #" + ExpeditionSession.AutoRunNumber + " · x" + ExpeditionSession.AutoRunSpeed + " · " + ExpeditionSession.Difficulty);
             DrawBossHealthBar();
             agentHudLabel ??= new GUIStyle(GUI.skin.label) { fontSize = 13, alignment = TextAnchor.MiddleLeft };
             agentHudLabel.normal.textColor = Color.white;

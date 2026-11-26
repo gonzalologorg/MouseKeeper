@@ -157,9 +157,23 @@ namespace MouseKeeper
             }
         }
 
+        internal static int ShopItemPrice(int price, ExpeditionDifficulty difficulty, int floorIndex)
+        {
+            int difficultyStep = difficulty switch
+            {
+                ExpeditionDifficulty.Easy => 0,
+                ExpeditionDifficulty.Hard => 2,
+                ExpeditionDifficulty.Swarm => 3,
+                _ => 1
+            };
+            int percentage = 125 + 10 * (difficultyStep + Mathf.Max(0, floorIndex));
+            return (price * percentage + 99) / 100;
+        }
+
         void SetShopPrice(ItemPickup pickup, Vector3 position, int price)
         {
             if (pickup == null) return;
+            price = ShopItemPrice(price, ExpeditionSession.Difficulty, levelIndex);
             GameObject label = CreateShopLabel(position, "$" + price);
             pickup.SetPrice(price, label);
         }

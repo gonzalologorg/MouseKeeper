@@ -123,10 +123,10 @@ public sealed class BalanceAndCameraTests
             queue.Invoke(run, new object[] { boss, 90f });
             Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(1));
             queue.Invoke(run, new object[] { boss, 55f });
-            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(4));
+            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(5));
             queue.Invoke(run, new object[] { boss, 55f });
             queue.Invoke(run, new object[] { boss, 0f });
-            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(10));
+            Assert.That(roomType.GetField("pendingBossRats").GetValue(room), Is.EqualTo(13));
             Assert.That(roomType.GetField("spawning").GetValue(room), Is.True);
             MethodInfo points = typeof(GameRun).GetMethod("MouseScore", BindingFlags.Static | BindingFlags.NonPublic);
             Assert.That(points.Invoke(null, new object[] { false, MouseEnemy.MouseVariant.Mushroom, 0 }), Is.EqualTo(25d));
